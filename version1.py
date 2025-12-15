@@ -8,7 +8,7 @@ import null_depth_control as dpth
 # ---- parameters ----
 T = 60e-6           # duration (s)
 B = 2e6             # bandwidth (Hz)
-fs = 30 * B         # sampling rate- number of samples per second (10 and not two for over sampling)(1/s)
+fs = 10 * B         # sampling rate- number of samples per second (10 and not two for over sampling)(1/s)
 N = int(np.round(T * fs))  # (s/s - number)
 t = np.linspace(0, T, N, endpoint=False) #array of time values from 0 to T spaced evenly with N points
 
@@ -122,9 +122,9 @@ s=create_s(z)
 ones = np.ones((N,1))
 A = np.hstack([c,s])
 A_inner = inner_product_mat(A , A)
-y = inner_product_mat(np.hstack([-s,c]),ones)
+y = inner_product_mat(np.hstack([-s,c]), ones)
 
-gamma = matrix_inverse(A_inner)@y
+gamma = matrix_inverse(A_inner) @ y
 
 phi_hat = (A @ gamma)
 
@@ -176,14 +176,15 @@ print(f"shape of A :{np.shape(A)}")
 print(f"shape of y :{np.shape(y)}")
 print(f"shape of phi_hat :{np.shape(phi_hat)}")
 
+
 phi__depth_control = dpth.solve_nulling_problem(
     A=A,
     y=y,
-    phi_hat = phi_hat,
-    beta=10000000,
-    W=None,
+    phi_hat= phi_hat,
+    beta=1e6,
+    W=4000,
     M=None,
-    max_iter=50
+    max_iter=20
 )
 
 s_depth_control = s1 * np.exp(1j * phi__depth_control.flatten())
@@ -202,6 +203,6 @@ plt.figure()
 plt.plot(t*1e6, phi__depth_control*180/np.pi)
 plt.xlabel("Time (µs)")
 plt.ylabel("Phase offset φ(t) (rad)")
-plt.title("Computed φ̂(t) from equation (8)")
+plt.title("φ̂(t) after CGD")
 plt.grid()
 plt.show()
