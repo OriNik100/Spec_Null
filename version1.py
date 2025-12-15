@@ -3,12 +3,12 @@ import scipy.linalg as la
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import matplotlib.pyplot as plt
-import nulling_ver2
+import null_depth_control as dpth
 
 # ---- parameters ----
 T = 60e-6           # duration (s)
 B = 2e6             # bandwidth (Hz)
-fs = 10 * B         # sampling rate- number of samples per second (10 and not two for over sampling)(1/s)
+fs = 30 * B         # sampling rate- number of samples per second (10 and not two for over sampling)(1/s)
 N = int(np.round(T * fs))  # (s/s - number)
 t = np.linspace(0, T, N, endpoint=False) #array of time values from 0 to T spaced evenly with N points
 
@@ -152,7 +152,7 @@ plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('Unadapted LFM spectrum')
 plt.grid()
-
+'''
 plt.figure()
 plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S))))
 plt.xlim(-B/1e6, B/1e6 +1)
@@ -160,7 +160,7 @@ plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('adapted LFM spectrum')
 plt.grid()
-
+'''
 plt.figure()
 plt.plot(t*1e6, phi_hat*180/np.pi)
 plt.xlabel("Time (µs)")
@@ -176,11 +176,11 @@ print(f"shape of A :{np.shape(A)}")
 print(f"shape of y :{np.shape(y)}")
 print(f"shape of phi_hat :{np.shape(phi_hat)}")
 
-phi__depth_control = nulling_ver2.solve_nulling_problem(
+phi__depth_control = dpth.solve_nulling_problem(
     A=A,
     y=y,
     phi_hat = phi_hat,
-    beta=100000000,
+    beta=10000000,
     W=None,
     M=None,
     max_iter=50
