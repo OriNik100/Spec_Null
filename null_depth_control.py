@@ -1,4 +1,5 @@
 import numpy as np
+import helper_functions as hlp
 
 def build_D(N):
     """Build D matrix of size (N-1) x N for first-order differences."""
@@ -41,13 +42,15 @@ def solve_nulling_problem(A, y, phi_hat, beta=10000, W=None, M=None, max_iter=50
         M = np.eye(N)  # (1200 x 1200)
         
     f0 = phi_hat
-    f=f0
+    f = f0
     #Dt = D.T
     DH = D.conj().T
     K = len(A[1])
 
     # initial residual r = y - A f0
-    r = y - A.T @ f0 # 2x1
+
+    # r = y - A.T @ f0
+    r = y - hlp.inner_product_mat(A, f0) # 2x1
 
     # initial gradient
     AH = A.conj().T
@@ -64,7 +67,7 @@ def solve_nulling_problem(A, y, phi_hat, beta=10000, W=None, M=None, max_iter=50
         num = dH @ g_new
         alpha = num / denom
         f = f + alpha * d
-        r = r - alpha * q
+        r = r - (alpha * q) /N
         g_old = g_new
         g_oldH = g_old.conj().T
         g_new = AH.T @ apply_W(W, r) - beta * (DH @ (D @ f))

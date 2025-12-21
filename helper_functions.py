@@ -10,9 +10,9 @@ def build_z(a, psi, t, null_freqs):
     N = len(t)
     K = len(null_freqs)
     z = np.zeros((N, K), dtype=complex)
-    base = a * np.exp(psi)     # common factor
+    base = a * np.exp(1j*psi)     # common factor
     for k, fk in enumerate(null_freqs):
-        z[:, k] = base * np.exp(-1j * 2*np.pi * fk * t) # cannot explain the minus sign
+        z[:, k] = base * np.exp(-1j * 2*np.pi * fk * t) 
     return z
 
 
@@ -20,7 +20,7 @@ def build_z(a, psi, t, null_freqs):
 # Create c, s from z
 ##############################################
 def create_c(z):
-    c=  np.zeros((len(z),len(z[0])))
+    c = np.zeros((len(z),len(z[0])))
     for k_idx, fk in enumerate(z[0]):
         c[:,k_idx]=np.real(z[:,k_idx])
     return c
@@ -37,7 +37,7 @@ def create_s(z):
 ##############################################
 def inner_product_mat(g, h):
         N = len(g)        
-        result = (g.T @ h) / N      
+        result = (g.T @ h) # dropped the 1/N factor just so we wil be consistent   
         return result
 
 ##############################################
@@ -75,3 +75,31 @@ def matrix_inverse(A):
         return A_inv
     except np.linalg.LinAlgError:
         raise np.linalg.LinAlgError("Matrix is singular and cannot be inverted")
+
+##########################################
+# Calculate the baseband spectrum of a signal
+# Returns the relevant frequencies and the Frequency-Domain signal
+##########################################
+
+def spectrum(x, fs):
+    """
+    Steps:
+    1. np.fft.fft(x) computes the FFT (frequency content).
+    2. np.fft.fftshift(...) reorders the FFT so that 0 Hz is centered,
+       with negative frequencies on the left and positive on the right.
+    3. np.fft.fftfreq(len(x), 1/fs) generates the frequency axis in Hz.
+       - len(x) = number of samples
+       - 1/fs   = time spacing between samples
+       - This gives the actual frequency values for each FFT bin.
+    4. np.fft.fftshift(...) is applied again to align the frequency axis
+       with the shifted FFT output.
+
+    Returns:
+    freqs : frequency axis in Hz (from -fs/2 to +fs/2)
+    X     : FFT of the signal, aligned with freqs
+    """
+    X = np.fft.fft(x)
+    X = np.fft.fftshift(X)
+    freqs=np.fft.fftfreq(len(x), 1/fs)
+    freqs = np.fft.fftshift(freqs)
+    return freqs, X
