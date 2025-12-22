@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import helper_functions as hlp
 def matrix_inverse(A):
     A = np.array(A)
     
@@ -26,11 +27,11 @@ def build_z_hat(a, psi, t, null_freqs):
 
     base = a * np.exp(1j*psi)     
     for k, fk in enumerate(null_freqs):
-        z[:, k] = base * np.exp(1j * 2*np.pi * fk * t) # cannot explain the minus sign
+        z[:, k] = base * np.exp(-1j * 2*np.pi * fk * t) # cannot explain the minus sign
     for k, fk in enumerate(null_freqs):
-        z1[:, k] = t*base * np.exp(1j * 2*np.pi * fk * t) # cannot explain the minus sign
+        z1[:, k] = t*base * np.exp(-1j * 2*np.pi * fk * t) # cannot explain the minus sign
     for k, fk in enumerate(null_freqs):
-        z2[:, k] = (t**2)*base * np.exp(1j * 2*np.pi * fk * t) # cannot explain the minus sign
+        z2[:, k] = (t**2)*base * np.exp(-1j * 2*np.pi * fk * t) # cannot explain the minus sign
     
     z_hat = np.hstack((z,z1,z2)) 
     print(f"Shape of z_hat: {z_hat.shape}")
@@ -57,29 +58,11 @@ def compute_phi_hat(a, psi, t, null_freqs):
     print(f"Shape of c: {c.shape}")
     print(f"Shape of A: {A.shape}")
    
-    A_inner = inner_product_mat(A,A)
-    A_inner_inv = matrix_inverse(A_inner)
+    A_inner = hlp.inner_product_mat(A,A)
+    A_inner_inv = hlp.matrix_inverse(A_inner)
     N=len(t)
     ones = np.ones((N,1))
-    y = inner_product_mat(np.hstack([-s,c]),ones)
+    y = hlp.inner_product_mat(np.hstack([-s,c]),ones)
     phi_hat_width = A@A_inner_inv@y
     print(f"Shape of phi_hat_width: {phi_hat_width.shape}")
     return phi_hat_width
-
-
-
-
-
-
-
-
-# 
-
-
-
-
-
-
-
-
-    return 

@@ -4,8 +4,8 @@ import scipy.linalg as la
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import matplotlib.pyplot as plt
-import null_depth_control
-import null_width_control
+import null_depth_control as dpth
+import null_width_control as wdth
 
 # ---- parameters ----
 T = 60e-6           # duration (s)
@@ -16,7 +16,7 @@ t = np.linspace(0, T, N, endpoint=False) #array of time values from 0 to T space
 
 # LFM chirp phase (baseband) # center time optional, f0 = 0# amplitude (rect), replace with window if desired
 b = B/T
-psi = 2*np.pi * (b/2) * t**2 
+psi = 2*np.pi * (b/2) * t**2
 a = np.ones_like(t)
 s1 = a * np.exp(1j*psi)
 
@@ -80,11 +80,11 @@ plt.grid()
 plt.show()
 
 
-phi__depth_control = null_depth_control.solve_nulling_problem(
+phi__depth_control = dpth.solve_nulling_problem(
     A=A,
     y=y,
     phi_hat = phi_hat,
-    beta = 10000,
+    beta = 500000,
     W = 4000*np.eye(2*K) ,
     M=np.eye(N),
     max_iter=20
@@ -118,7 +118,7 @@ print(f"shape of y :{np.shape(y)}")
 print(f"shape of phi_hat :{np.shape(phi_hat)}")
 print(f"shape of phi_hat_depth :{np.shape(phi__depth_control)}")
 
-phi_width_control = null_width_control.compute_phi_hat(a, psi, t, nulls)
+phi_width_control = wdth.compute_phi_hat(a, psi, t, nulls)
 
 
 s_width_control = s1 * np.exp(1j * phi_width_control.flatten())
@@ -133,4 +133,19 @@ plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('comon LFM spectrum')
 plt.grid()
+plt.show()
+
+mf_self = hlp.apply_matched_filter(s1,s1)
+mf_basic = hlp.apply_matched_filter(s_adapted.flatten(), s1)
+mf_dpth = hlp.apply_matched_filter(s_depth_control.flatten(), s1)
+
+plt.figure()
+plt.plot(mf_basic, label="Basic Adapted Chirp")
+plt.plot(mf_dpth, ':', label="Depth Control")
+# plt.plot(mf_width, ':', label="Width Controlled (Deriv. Const.)")
+plt.xlabel('Index (Time Samples)')
+plt.ylabel('Power (dB)')
+plt.title('Nulled-Chirp Matched Filter Output')
+plt.legend()
+plt.grid(True)
 plt.show()

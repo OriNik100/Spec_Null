@@ -36,8 +36,10 @@ def create_s(z):
 # gives a matrix of 
 ##############################################
 def inner_product_mat(g, h):
-        N = len(g)        
-        result = (g.T @ h) # dropped the 1/N factor just so we wil be consistent   
+        N = len(g[0])        
+        result = (g.T @ h) / N
+        # dropped the 1/N factor just so we wil be consistent
+        # restored the 1/N fzctor to be consistent with the article   
         return result
 
 ##############################################
@@ -103,3 +105,27 @@ def spectrum(x, fs):
     freqs=np.fft.fftfreq(len(x), 1/fs)
     freqs = np.fft.fftshift(freqs)
     return freqs, X
+
+def apply_matched_filter(adapted, reference):
+    """
+    מממש את מוצא ה-Matched Filter כפי שמתואר במאמר (איור 8).
+    
+    Parameters:
+    adapted_signal: האות לאחר הוספת ה-nulls (s_adapted)
+    reference_signal: האות המקורי ללא ה-nulls (s1)
+    
+    Returns:
+    mf_output: מוצא המסנן בערכים לוגריתמיים (dB) מנורמלים
+    """
+    #conjugating the reference to create the MF kernel
+    mf_kernel = np.conj(reference[::-1])
+    
+    # Convolution implementation
+    output = np.convolve(adapted, mf_kernel, mode='same')
+    
+    # dB normalization
+    abs_output = np.abs(output)
+    mf_output_db = 20 * np.log10(abs_output / np.max(abs_output))
+    
+    return mf_output_db
+
