@@ -41,7 +41,7 @@ def inner_product_mat(g, h):
         N = len(g) 
         print(f"Shape of g.T: {(g.T).shape}")   
         print(f"Shape of h: {(h).shape}")       
-        result = (g.T @ h) / N      
+        result = hlp.inner_product_mat(g, h)      
         return result
 
 

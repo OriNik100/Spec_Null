@@ -36,7 +36,7 @@ def create_s(z):
 # gives a matrix of 
 ##############################################
 def inner_product_mat(g, h):
-        N = len(g[0])        
+        N = len(g)        
         result = (g.T @ h) / N
         # dropped the 1/N factor just so we wil be consistent
         # restored the 1/N fzctor to be consistent with the article   

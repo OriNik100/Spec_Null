@@ -54,26 +54,26 @@ def solve_nulling_problem(A, y, phi_hat, beta=10000, W=None, M=None, max_iter=50
 
     # initial gradient
     AH = A.conj().T
-    g_new = AH.T @ apply_W(W, r) - beta * (DH @ (D @ f0))  # (1200x1)
+    g_new = hlp.inner_product_mat(AH, apply_W(W, r)) - beta * (DH @ (D @ f0))  # (1200x1)
     d = + M @ g_new  # (1200x1)
     dH = d.conj().T
     g_old = None
     for i in range(max_iter):
-        q = A.T @ d  # (2K x 1)
+        q = hlp.inner_product_mat(A, d)  # (2K x 1)
         qH = q.conj().T
         qWq = qH @ apply_W(W, q)  # (1x1)
         secTerm = beta * (dH @ (DH @ (D @ d)))  # (1x1)
         denom = qWq + secTerm
-        num = dH @ g_new
+        num = hlp.inner_product_mat(dH.T, g_new)
         alpha = num / denom
         f = f + alpha * d
-        r = r - (alpha * q) /N
+        r = r - (alpha * q)
         g_old = g_new
         g_oldH = g_old.conj().T
         g_new = AH.T @ apply_W(W, r) - beta * (DH @ (D @ f))
         g_newH = g_new.conj().T
 
-        gamma = (g_newH @ (M @ g_new)) / (g_oldH @ (M @ g_old))
+        gamma = (hlp.inner_product_mat(g_new, apply_M(M, g_new))) / hlp.inner_product_mat(g_old, apply_M(M, g_old))
         d = M @ g_new + gamma * d
 
     return f
