@@ -10,7 +10,7 @@ import null_width_control as wdth
 # ---- parameters ----
 T = 60e-6           # duration (s)
 B = 2e6             # bandwidth (Hz)
-fs = 10 * B         # sampling rate- number of samples per second (10 and not two for over sampling)(1/s)
+fs = 5 * B         # sampling rate- number of samples per second (10 and not two for over sampling)(1/s)
 N = int(np.round(T * fs))  # (s/s - number)
 t = np.linspace(0, T, N, endpoint=False) #array of time values from 0 to T spaced evenly with N points
 
@@ -23,9 +23,9 @@ s1 = a * np.exp(1j*psi)
 
 # compute baseband spectrum
 
-freqs, S = hlp.spectrum(s1, fs)
+freqs, S = hlp.spectrum(s1, fs, 250000)
 
-nulls = [0.4e6]
+nulls = [0.4e6, 0.2e6, 0.3e6]
 K=len(nulls)
 z = hlp.build_z(a,psi,t,nulls)
 c = np.real(z)
@@ -41,7 +41,7 @@ gamma = hlp.matrix_inverse(A_inner) @ y
 phi_hat = (A @ gamma)
 
 s_adapted = a * np.exp(1j*psi + 1j * phi_hat.flatten())
-freqs2, S_adapted = hlp.spectrum(s_adapted, fs)
+freqs2, S_adapted = hlp.spectrum(s_adapted, fs, 250000)
 
 
 plt.figure()
@@ -56,8 +56,9 @@ plt.grid()
 
 
 plt.figure()
-plt.plot(freqs/1e6, 20*np.log10(np.abs(S)/np.max(np.abs(S))))
-plt.xlim(-B/1e6, B/1e6 +1)
+plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S))))
+plt.plot(freqs/1e6, 20*np.log10(np.abs(S)/np.max(np.abs(S))), color ='red')
+plt.xlim(-B/1e6-3, B/1e6 +3)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('Unadapted LFM spectrum')
@@ -65,7 +66,7 @@ plt.grid()
 
 plt.figure()
 plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S))))
-plt.xlim(-B/1e6, B/1e6 +1)
+plt.xlim(-B/1e6-3, B/1e6 +3)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('adapted LFM spectrum')
@@ -84,7 +85,7 @@ phi__depth_control = dpth.solve_nulling_problem(
     A=A,
     y=y,
     phi_hat = phi_hat,
-    beta = 10000,
+    beta = 1e4,
     W = 4000*np.eye(2*K) ,
     M=np.eye(N),
     max_iter=20
@@ -92,11 +93,11 @@ phi__depth_control = dpth.solve_nulling_problem(
 
 s_depth_control = s1 * np.exp(1j * phi__depth_control.flatten())
 
-freqs3, S_depth_control = hlp.spectrum(s_depth_control, fs)
+freqs3, S_depth_control = hlp.spectrum(s_depth_control, fs, 2**18)
 
 plt.figure()
 plt.plot(freqs3/1e6, 20*np.log10(np.abs(S_depth_control)/np.max(np.abs(S))))
-plt.xlim(-B/1e6, B/1e6 +1)
+plt.xlim(-B/1e6-3, B/1e6 +3)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('adapted LFM spectrum')
@@ -123,12 +124,12 @@ phi_width_control = wdth.compute_phi_hat(a, psi, t, nulls)
 
 s_width_control = s1 * np.exp(1j * phi_width_control.flatten())
 
-freqs4, S_width_control = hlp.spectrum(s_width_control, fs)
+freqs4, S_width_control = hlp.spectrum(s_width_control, fs, 2**18)
 
 plt.figure()
 plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S))), '--')
 plt.plot(freqs4/1e6, 20*np.log10(np.abs(S_width_control)/np.max(np.abs(S))))
-plt.xlim(-B/1e6, B/1e6 +1)
+plt.xlim(-B/1e6-3, B/1e6 +3)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('comon LFM spectrum')

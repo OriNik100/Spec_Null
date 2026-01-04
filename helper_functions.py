@@ -83,8 +83,12 @@ def matrix_inverse(A):
 # Returns the relevant frequencies and the Frequency-Domain signal
 ##########################################
 
-def spectrum(x, fs):
+def spectrum(x, fs, n_fft=None):
     """
+    If n_fft is not defined, use N.
+    else
+    אם לא הוגדר n_fft, או שהוא קטן מ-N, נשתמש ב-N (התנהגות ברירת מחדל)
+    אבל מומלץ להשתמש בערך גדול פי 8 או 16 מהאורך המקורי לתצוגה חלקה
     Steps:
     1. np.fft.fft(x) computes the FFT (frequency content).
     2. np.fft.fftshift(...) reorders the FFT so that 0 Hz is centered,
@@ -100,10 +104,17 @@ def spectrum(x, fs):
     freqs : frequency axis in Hz (from -fs/2 to +fs/2)
     X     : FFT of the signal, aligned with freqs
     """
-    X = np.fft.fft(x)
+    N = len(x)
+    
+    if n_fft is None or n_fft < N:
+        n_fft = N  # ריפוד משמעותי לתצוגה חלקה
+        
+    X = np.fft.fft(x, n=n_fft) # The FFT function will zero-pad automatically
     X = np.fft.fftshift(X)
-    freqs=np.fft.fftfreq(len(x), 1/fs)
+    
+    freqs = np.fft.fftfreq(n_fft, 1/fs) # also use zero padding here
     freqs = np.fft.fftshift(freqs)
+    
     return freqs, X
 
 def apply_matched_filter(adapted, reference):
@@ -121,11 +132,11 @@ def apply_matched_filter(adapted, reference):
     mf_kernel = np.conj(reference[::-1])
     
     # Convolution implementation
-    output = np.convolve(adapted, mf_kernel, mode='same')
+    output = np.convolve(adapted, mf_kernel)
     
     # dB normalization
     abs_output = np.abs(output)
-    mf_output_db = 20 * np.log10(abs_output / np.max(abs_output))
+    mf_output_db = 20 * np.log10(abs_output)
     
     return mf_output_db
 
