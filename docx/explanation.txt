@@ -1,0 +1,2 @@
+This folder is for importing the .pdf files we use during our project.
+It consists of the paper we used to begin with, our preliminary report etc.
