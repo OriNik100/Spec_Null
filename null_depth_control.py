@@ -1,79 +1,53 @@
 import numpy as np
-import helper_functions as hlp
 
 def build_D(N):
-    """Build D matrix of size (N-1) x N for first-order differences."""
     D = np.zeros((N - 1, N))
     for i in range(N - 1):
         D[i, i] = -1
         D[i, i + 1] = 1
     return D
 
-
-def apply_W(W, v):
+def solve_nulling_problem(A, b, phi0, beta=1e4, W=None, M=None, t=None, max_iter=50):
+    """
+    Solve conjugate-gradient exactly as MATLAB code:
+    - A: (N x 2K)
+    - b: (2K x 1) already computed via trapz (hlp.inner_product_mat(..., t))
+    - phi0: (N x 1) initial phi (LS solution)
+    - returns phi (N x 1)
+    """
+    N, ncols = A.shape
+    if M is None:
+        M = np.eye(N)
     if W is None:
-        return v
-    W_arr = np.asarray(W)
-    if W_arr.ndim == 0:
-        return W_arr * v
-    elif W_arr.ndim == 1:
-        return W_arr * v
-    else:
-        return W_arr @ v
+        W = 4000 * np.eye(ncols)
 
-def apply_M(M, v):
-    if M is None:
-        return v
-    M_arr = np.asarray(M)
-    if M_arr.ndim == 0:
-        return M_arr * v
-    else:
-        return M_arr @ v
+    D = build_D(N)
 
+    # initial residual and gradient as in MATLAB
+    phi = phi0.copy().reshape(-1, 1)   # (N x 1)
+    res = - A.T @ phi + b              # (2K x 1)
+    g_old = A @ res - beta * (D.T @ (D @ phi))
 
-def solve_nulling_problem(A, y, phi_hat, beta=10000, W=None, M=None, max_iter=50):
-    print("shape of ")
-    # Get the A matrix (N x 2K)
-    N, n = A.shape  # N = time samples, n = 2K (coefficients)
+    d = M @ g_old
+    for iter in range(max_iter):
+        # compute new gradient
+        g_new = A @ res - beta * (D.T @ (D @ phi))
 
-    D = build_D(N)  # shape ((n-1) x n)
+        if iter == 0:
+            d = M @ g_new
+        else:
+            num = (g_new.T @ M @ g_new)
+            den = (g_old.T @ M @ g_old)
+            gam = num / den
+            d = (M @ g_new) + gam * d
 
-    if M is None:
-        M = np.eye(N)  # (1200 x 1200)
-        
-    f0 = phi_hat
-    f = f0
-    
-    DH = D.conj().T
-    K = len(A[1])
+        q = A.T @ d
+        denom = (q.T @ W @ q) + beta * (d.T @ (D.T @ (D @ d)))
+        Alpha = (d.T @ g_new) / denom
 
-    # initial residual r = y - A f0
-    # We multiply and divide by N (in 3 places) to ensure same "units"
-    # r = y - A.T @ f0
-    r = y - hlp.inner_product_mat(A, f0) # 2x1
+        phi = phi + Alpha * d
+        res = res - Alpha * q
 
-    # initial gradient
-    AH = A.conj().T
-    g_new = N*(AH.T @ apply_W(W, r)) - beta * (DH @ (D @ f0))  # (1200x1) 
-    d = + M @ g_new  # (1200x1)
-    dH = d.conj().T
-    g_old = None
-    for i in range(max_iter):
-        q = A.T @ d  # (2K x 1)
-        qH = q.conj().T
-        qWq = qH @ apply_W(W, q)  # (1x1)
-        secTerm = beta * (dH @ (DH @ (D @ d)))  # (1x1)
-        denom = qWq + secTerm
-        num = dH @ g_new
-        alpha = num / denom
-        f = f + alpha * d
-        r = r - (alpha * q)/N
         g_old = g_new
-        g_oldH = g_old.conj().T
-        g_new = N*(AH.T @ apply_W(W, r)) - beta * (DH @ (D @ f))
-        g_newH = g_new.conj().T
 
-        gamma = ((g_new.T @ apply_M(M, g_new))) / (g_old.T @ apply_M(M, g_old))
-        d = M @ g_new + gamma * d
-
-    return f
+    return phi
