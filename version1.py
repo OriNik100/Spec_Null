@@ -26,7 +26,7 @@ s1 = a * np.exp(1j*psi)
 # compute baseband spectrum
     
 freqs, S = hlp.spectrum(s1, fs, N_FFT)
-nulls = [0.2e6, 0.3e6, 0.4e6]
+nulls = [0.4e6]
 K=len(nulls)
 z = hlp.build_z(a,psi,t,nulls)
 c = np.real(z)
@@ -39,6 +39,15 @@ gamma = hlp.matrix_inverse(A_inner) @ y
 phi_hat = (A @ gamma)
 s_adapted = a * np.exp(1j*psi + 1j * phi_hat.flatten())
 freqs2, S_adapted = hlp.spectrum(s_adapted, fs, N_FFT)
+
+
+# Trying to find the TRUE depth of the null.
+S_adapted_db = 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S_adapted)) + 1e-40)
+for k, f_val in enumerate(nulls):
+    depth = np.min(S_adapted_db[np.abs(freqs2 - f_val) < 0.05e6])  # search within 100 kHz around the null frequency
+    print(f"Null at around {f_val/1e6:.2f} MHz: Depth = {depth:.2f} dB")
+# It changes with NFFT.
+
 
 def getphi(nulls=nulls):
     t = np.linspace(0, T, N, endpoint=False)
@@ -57,6 +66,50 @@ def getphi(nulls=nulls):
 
     phi_hat = (A @ gamma)
     return phi_hat
+
+def calculate_mf_and_pslr(signal):
+    
+    matched_filter = np.conj(signal[::-1])
+    
+    mf = np.convolve(signal, matched_filter, mode='full')
+    
+    mf_abs = np.abs(mf)
+    mf_db = 20 * np.log10(mf_abs + 1e-20)
+    
+    # PSLR Calculation
+    center_idx = len(mf_db) // 2
+    main_lobe_width_seconds = 2 / B
+    margin_samples = int((main_lobe_width_seconds / 2) * fs)
+    
+    left_side = mf_db[:center_idx - margin_samples]
+    right_side = mf_db[center_idx + margin_samples:]
+    
+    sidelobe_region = np.concatenate((left_side, right_side))
+    max_sidelobe = np.max(sidelobe_region)
+    max_mainlobe = np.max(mf_db)
+    
+    pslr = max_mainlobe - max_sidelobe
+
+
+    # ISLR calculation
+    n_main = np.arange(len(mf_db[center_idx - margin_samples : center_idx + margin_samples]))
+    n_left = np.arange(len(left_side))
+    n_right = np.arange(len(right_side))
+
+    main_lobe_linear = mf_abs[center_idx - margin_samples : center_idx + margin_samples]
+    left_side_linear = mf_abs[:center_idx - margin_samples]
+    right_side_linear = mf_abs[center_idx + margin_samples:]
+
+    # discrete options:
+    # main_lobe_energy = np.sum(mf_db[center_idx - margin_samples : center_idx + margin_samples] ** 2)
+    # sidelobe_energy = np.sum(left_side ** 2) + np.sum(right_side ** 2)    
+
+    main_lobe_energy = np.trapezoid(main_lobe_linear ** 2, x=n_main)
+    sidelobe_energy = np.trapezoid(left_side_linear ** 2, x=n_left) + np.trapezoid(right_side_linear ** 2, x=n_right)
+    islr = 10 * np.log10(sidelobe_energy / main_lobe_energy + 1e-40)
+
+
+    return mf_db, pslr, islr
 
 if __name__ == "__main__":
     phi_hat = getphi(nulls).flatten()
@@ -110,6 +163,28 @@ if __name__ == "__main__":
 
     freqs3, S_depth_control = hlp.spectrum(s_depth_control, fs, N_FFT)
 
+    beta_arr = [1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11]
+    phi_arr = [dpth.solve_nulling_problem(A=A,
+        b=y,
+        phi_hat = phi_hat,
+        beta = beta_val,
+        W = 4000*np.eye(2*K) ,
+        M=np.eye(N),
+        max_iter=20) for beta_val in beta_arr]
+    s_depth_arr = [s1 * np.exp(1j * phi_val.flatten()) for phi_val in phi_arr]
+
+# Plotting the spectra for different beta values
+    plt.figure(figsize=(12, 8))
+    for beta_val, s_depth in zip(beta_arr, s_depth_arr):
+        freqs_depth, S_depth = hlp.spectrum(s_depth, fs, N_FFT)
+        plt.plot(freqs_depth/1e6, 20*np.log10(np.abs(S_depth)/np.max(np.abs(S_depth))), label=f'β={beta_val:.0e}')
+    plt.xlim(-B/1e6-3, B/1e6 +3)
+    plt.xlabel('Frequency (MHz)')
+    plt.ylabel('Power (dB)')
+    plt.title('Depth Control LFM spectrum for different β values')
+    plt.legend()
+    plt.grid()
+    plt.show()
 
     plt.figure()
     plt.plot(freqs3/1e6, 20*np.log10(np.abs(S_depth_control)/np.max(np.abs(S_depth_control))))
@@ -126,14 +201,19 @@ if __name__ == "__main__":
     plt.title("Computed φ̂(t) from equation (9) -Depth control")
     plt.grid()
     plt.show()
+    
+# calculating PSLR and ISLR for depth control
 
+    results = [calculate_mf_and_pslr(s_depth_val.flatten()) for s_depth_val in s_depth_arr]
+    mf_depth, pslr_depth, islr_depth = zip(*results)
+    for beta_val, pslr_val, islr_val in zip(beta_arr, pslr_depth, islr_depth):
+        print(f"Depth Control (β={beta_val:.0e}) - PSLR: {pslr_val:.2f} dB, ISLR: {islr_val:.2f} dB")
 
 
 
     #############################################################
     # ----------------Width Control ----------------------------#
     #############################################################
-
     phi_width_control = wdth.compute_phi_hat(a, psi, t, nulls)
 
     s_width_control = s1 * np.exp(1j * phi_width_control.flatten())
@@ -282,9 +362,6 @@ if __name__ == "__main__":
      plt.tight_layout()
      plt.show()
      
-     
-     
-     
-     
-     
     '''
+
+    

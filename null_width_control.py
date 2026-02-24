@@ -66,3 +66,5 @@ def compute_phi_hat(a, psi, t, null_freqs):
     phi_hat_width = A@A_inner_inv@y
     print(f"Shape of phi_hat_width: {phi_hat_width.shape}")
     return phi_hat_width
+
+# Technically speaking, the width will get higher if we use z3.

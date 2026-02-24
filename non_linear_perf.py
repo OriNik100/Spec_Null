@@ -9,9 +9,9 @@ B = 2e6             # bandwidth (Hz)
 fs = 5 * B         # sampling rate- number of samples per second(1/s)
 N = int(np.round(T * fs))  # (s/s - number)
 t = np.linspace(0, T, N, endpoint=False) #array of time values from 0 to T spaced evenly with N points
-N_FFT = 2**14
+N_FFT = 2**20
 
-null_freqs = [0.2e6, 0.3e6, 0.4e6]
+null_freqs = [0.4e6]
 
 
 # LFM chirp phase (baseband) # center time optional, f0 = 0# amplitude (rect), replace with window if desired
