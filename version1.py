@@ -14,11 +14,11 @@ B = 2e6             # bandwidth (Hz)
 fs = 5 * B         # sampling rate- number of samples per second (10 and not two for over sampling)(1/s)
 N = int(np.round(T * fs))  # (s/s - number)
 t = np.linspace(0, T, N, endpoint=False) #array of time values from 0 to T spaced evenly with N points
-N_FFT = 2**22
+N_FFT = 2**18
 
 # LFM chirp phase (baseband) # center time optional, f0 = 0# amplitude (rect), replace with window if desired
 b = B/T
-psi = 2*np.pi * (b/2) * t**2
+psi = np.pi *b* t**2
 a = np.ones_like(t)
 s1 = a * np.exp(1j*psi)
 
@@ -34,9 +34,9 @@ c = np.real(z)
 s = np.imag(z)
 ones = np.ones((N,1))
 A = np.hstack([c,s])
-A_inner = hlp.inner_product_mat(A , A, t)
+A_inner = hlp.inner_product_mat(A , A,t).real
 
-y = hlp.inner_product_mat(np.hstack([-s,c]), ones, t)
+y = hlp.inner_product_mat(np.hstack([-s,c]),ones,t)
 
 gamma = hlp.matrix_inverse(A_inner) @ y
 
@@ -45,12 +45,8 @@ phi_hat = (A @ gamma)
 s_adapted = a * np.exp(1j*psi + 1j * phi_hat.flatten())
 freqs2, S_adapted = hlp.spectrum(s_adapted, fs, N_FFT)
 
-
-# In decibels:
-norm_factor = np.max(np.abs(S)) # נרמול אחיד לכולם לפי המקורי
-
-S_orig_db = 20*np.log10(np.abs(S)/norm_factor + 1e-12)
-S_analytical_db = 20*np.log10(np.abs(S_adapted)/norm_factor + 1e-12)
+def getphi():
+    return phi_hat
 
 
 plt.figure()
@@ -65,21 +61,14 @@ plt.grid()
 
 
 plt.figure()
-plt.plot(freqs2/1e6, S_analytical_db, color='blue')
-plt.plot(freqs/1e6, S_orig_db, color ='red')
+plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S_adapted))))
+plt.plot(freqs/1e6, 20*np.log10(np.abs(S)/np.max(np.abs(S))), color ='red')
 plt.xlim(-B/1e6-3, B/1e6 +3)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('Unadapted LFM spectrum')
 plt.grid()
 
-plt.figure()
-plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S))))
-plt.xlim(-B/1e6-3, B/1e6 +3)
-plt.xlabel('Frequency (MHz)')
-plt.ylabel('Power (dB)')
-plt.title('adapted LFM spectrum')
-plt.grid()
 
 plt.figure()
 plt.plot(t*1e6, phi_hat*180/np.pi)
@@ -89,26 +78,30 @@ plt.title("Computed φ̂(t) from equation (8)")
 plt.grid()
 plt.show()
 
+
+
 #############################################################
 # ----------------Depth Control ----------------------------#
 #############################################################
+
+
 phi__depth_control = dpth.solve_nulling_problem(
     A=A,
     b=y,
-    phi0 = phi_hat,
+    phi_hat = phi_hat,
     beta = 1e4,
     W = 4000*np.eye(2*K) ,
     M=np.eye(N),
-    max_iter=20,
-    t=t
+    max_iter=20
 )
 
 s_depth_control = s1 * np.exp(1j * phi__depth_control.flatten())
 
 freqs3, S_depth_control = hlp.spectrum(s_depth_control, fs, N_FFT)
 
+'''
 plt.figure()
-plt.plot(freqs3/1e6, 20*np.log10(np.abs(S_depth_control)/np.max(np.abs(S))))
+plt.plot(freqs3/1e6, 20*np.log10(np.abs(S_depth_control)/np.max(np.abs(S_depth_control))))
 plt.xlim(-B/1e6-3, B/1e6 +3)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
@@ -124,13 +117,6 @@ plt.grid()
 plt.show()
 
 
-print(f"shape of z :{np.shape(z)}")
-print(f"shape of c :{np.shape(c)}")
-print(f"shape of s :{np.shape(s)}")
-print(f"shape of A :{np.shape(A)}")
-print(f"shape of y :{np.shape(y)}")
-print(f"shape of phi_hat :{np.shape(phi_hat)}")
-print(f"shape of phi_hat_depth :{np.shape(phi__depth_control)}")
 
 
 #############################################################
@@ -144,9 +130,10 @@ s_width_control = s1 * np.exp(1j * phi_width_control.flatten())
 freqs4, S_width_control = hlp.spectrum(s_width_control, fs, N_FFT)
 
 plt.figure()
-plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S))), '--')
-plt.plot(freqs4/1e6, 20*np.log10(np.abs(S_width_control)/np.max(np.abs(S))))
-plt.xlim(-B/1e6-3, B/1e6 +3)
+plt.plot(freqs2/1e6, 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S_adapted))), '--')
+plt.plot(freqs4/1e6, 20*np.log10(np.abs(S_width_control)/np.max(np.abs(S_width_control))))
+plt.xlim(0.35,0.45)
+plt.ylim(-45,0)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power (dB)')
 plt.title('Width Control LFM spectrum')
@@ -159,128 +146,132 @@ plt.show()
 
 mf_self = hlp.apply_matched_filter(s1,s1)
 mf_basic = hlp.apply_matched_filter(s_adapted.flatten(), s1)
-mf_dpth = hlp.apply_matched_filter(s_depth_control.flatten(), s1)
+#mf_dpth = hlp.apply_matched_filter(s_depth_control.flatten(), s1)
 
 plt.figure()
 plt.plot(mf_basic, label="Basic Adapted Chirp")
-plt.plot(mf_dpth, ':', label="Depth Control")
+#plt.plot(mf_dpth, ':', label="Depth Control")
 # plt.plot(mf_width, ':', label="Width Controlled (Deriv. Const.)")
 plt.xlabel('Index (Time Samples)')
 plt.ylabel('Power (dB)')
 plt.title('Nulled-Chirp Matched Filter Output')
-plt.legend()
 plt.grid(True)
 plt.show()
 
+'''
 
 ################################################
 # -------Non linear ---------------------------#
 ################################################
+
 print("\n--- Loading Optimized Phasor from file ---")
 
 filename = 'optimal_phasor.npy'
-
-
 if os.path.exists(filename):
     # 1. טעינת הקובץ
     correction_phasor = np.load(filename)
     print(f"Loaded '{filename}' successfully.")
-    
-    # For Debugging
-    if len(correction_phasor) != len(s1):
-        print(f"Warning: Length mismatch! File: {len(correction_phasor)}, s1: {len(s1)}")
-        
-    else:
-        # 2. בניית האות האופטימלי
-        s_opt = s1 * correction_phasor
-
-        # 3. חישוב ספקטרום
-        freqs_opt, S_opt = hlp.spectrum(s_opt, fs, N_FFT)
-        
-        
-        plt.figure(figsize=(12, 8))
-
-       
-
-        S_opt_db = 20*np.log10(np.abs(S_opt)/norm_factor + 1e-12)
-
-        # גרף 1: מקורי (כחול)
-        plt.plot(freqs/1e6, S_orig_db, label='Original LFM', color='blue', alpha=0.3)
-
-        # גרף 2: אנליטי (ירוק)
-        plt.plot(freqs2/1e6, S_analytical_db, label='Analytical', color='green', linestyle='--', alpha=0.6)
-
-        # גרף 3: אופטימלי (אדום)
-        plt.plot(freqs_opt/1e6, S_opt_db, label='Optimized', color='red')
-
-        # --- סימון החורים וכתיבת העומק ---
-        for f_val in nulls:
-            plt.axvline(f_val/1e6, color='k', linestyle=':', alpha=0.3)
-            
-            # 1. כתיבת עומק עבור האופטימלי (אדום)
-            idx_opt = np.argmin(np.abs(freqs_opt - f_val))
-            depth_opt = S_opt_db[idx_opt]
-            plt.text(f_val/1e6, depth_opt + 2, f"{depth_opt:.1f} dB", 
-                     color='red', fontweight='bold', rotation=90, 
-                     verticalalignment='bottom', horizontalalignment='right')
-
-            # 2. כתיבת עומק עבור האנליטי (ירוק)
-            # שים לב: משתמשים ב-freqs2 כי זה ציר התדר של האות האנליטי
-            idx_ana = np.argmin(np.abs(freqs2 - f_val))
-            depth_ana = S_analytical_db[idx_ana]
-            
-            # הזזתי את הטקסט הירוק קצת שמאלה (horizontalalignment='left') כדי שלא יתנגש באדום
-            plt.text(f_val/1e6, depth_ana + 2, f"{depth_ana:.1f} dB", 
-                     color='green', fontweight='bold', rotation=90, 
-                     verticalalignment='bottom', horizontalalignment='left')
-
-        plt.title("Spectrum Comparison: Original vs Analytical vs Optimized")
-        plt.xlabel("Frequency [MHz]")
-        plt.ylabel("Normalized Magnitude [dB]")
-        plt.legend()
-        plt.grid(True)
-        # plt.xlim(0, B/1e6 + 0.2)
-        plt.ylim(-100, 5)
-        plt.tight_layout()
-        
-
-        
-        # --- תוספת: השוואת פאזות (אנליטי מול אופטימלי) - במעלות ---
-        print("\n--- Phase Correction Comparison ---")
-
-        # 1. המרת הפאזה האנליטית למעלות (משתמשים ב-phi_hat הקיים)
-        phi_ana_deg = (phi_hat*180/np.pi)
-
-        # 2. חילוץ הפאזה האופטימלית והמרה למעלות
-        # correction_phasor הוא exp(j*phi), אז נוציא את הזווית
-        phi_opt_rad = np.angle(correction_phasor)
-        phi_opt_deg = np.degrees(phi_opt_rad)
-
-        # 3. חישוב המרחק האוקלידי (בין וקטורי המעלות)
-        diff_norm = np.linalg.norm(phi_opt_deg - phi_ana_deg)
-        print(f"Euclidean Distance (in degrees space): {diff_norm:.4f}")
-
-        # 4. ציור הגרף
-        plt.figure(figsize=(12, 6))
-        t_us = t * 1e6  # ציר זמן במיקרו-שניות
-
-        # גרף הפאזה האנליטית (ירוק מקווקו)
-        plt.plot(t_us, phi_ana_deg, label='Analytical Phase (phi_hat)', 
-                 color='green', linestyle='--', linewidth=2)
-
-        # גרף הפאזה האופטימלית (אדום רציף)
-        plt.plot(t_us, phi_opt_deg, label='Optimized Phase (DL Model)', 
-                 color='red', alpha=0.7, linewidth=2)
-
-        plt.title(f"Phase Correction Comparison [Degrees]\n(Euclidean Diff: {diff_norm:.2f})")
-        plt.xlabel("Time [us]")
-        plt.ylabel("Phase [Degrees]") # שינינו למעלות
-        plt.legend()
-        plt.grid(True, alpha=0.5)
-        plt.tight_layout()
-        plt.show()
-
 else:
+    correction_phasor = 0
     print(f"Error: File '{filename}' not found.")
 
+
+
+# 2. בניית האות האופטימלי
+s_opt = s1 * correction_phasor
+
+# 3. חישוב ספקטרום
+freqs_opt, S_opt = hlp.spectrum(s_opt, fs,N_FFT)
+
+
+plt.figure(figsize=(12, 8))
+norm_factor = np.max(np.abs(S)) 
+
+
+S_orig_db = 20*np.log10(np.abs(S)/norm_factor + 1e-40)
+S_adapted_db = 20*np.log10(np.abs(S_adapted)/np.max(np.abs(S_adapted)))
+S_opt_db = 20*np.log10(np.abs(S_opt)/np.max(np.abs(S_opt)) + 1e-40)
+
+# גרף 1: מקורי (כחול)
+plt.plot(freqs/1e6, S_orig_db, label='Original LFM', color='blue', alpha=0.3)
+
+# גרף 2: אנליטי (ירוק)
+plt.plot(freqs2/1e6, S_adapted_db, label='Analytical', color='green', linestyle='--', alpha=0.6 )
+
+# גרף 3: אופטימלי (אדום)
+plt.plot(freqs_opt/1e6, S_opt_db, label='Optimized', color='red')
+
+# --- סימון החורים וכתיבת העומק ---
+for f_val in nulls:
+    plt.axvline(f_val/1e6, color='k', linestyle=':', alpha=0.3)
+
+    search_bw = 0.05e6
+
+    # 1. כתיבת עומק עבור האופטימלי (אדום)
+    mask = np.abs(freqs_opt - f_val) < search_bw
+    idx_opt = np.argmin(S_opt_db[mask])
+    depth_opt = S_opt_db[mask][idx_opt]
+    plt.text(f_val/1e6, depth_opt + 2, f"{depth_opt:.2f} dB", 
+                color='red', fontweight='bold', rotation=90, 
+                verticalalignment='bottom', horizontalalignment='right')
+
+    # 2. כתיבת עומק עבור האנליטי (ירוק)
+    mask = np.abs(freqs2 - f_val) < search_bw
+    idx_ana = np.argmin(S_adapted_db[mask]) 
+    depth_ana = S_adapted_db[mask][idx_ana]
     
+    # הזזנו את הטקסט הירוק קצת שמאלה (horizontalalignment='left') כדי שלא יתנגש באדום
+    plt.text(f_val/1e6, depth_ana + 2, f"{depth_ana:.2f} dB", 
+                color='green', fontweight='bold', rotation=90, 
+                verticalalignment='bottom', horizontalalignment='left')
+
+plt.title("Spectrum Comparison: Original vs Analytical vs Optimized")
+plt.xlabel("Frequency [MHz]")
+plt.ylabel("Normalized Magnitude [dB]")
+plt.legend()
+plt.grid(True)
+plt.xlim(0, B/1e6 + 0.2)
+plt.ylim(-120, 5)
+plt.tight_layout()
+
+
+
+# ---  השוואת פאזות (אנליטי מול אופטימלי) - במעלות ---
+print("\n--- Phase Correction Comparison ---")
+
+# 1. המרת הפאזה האנליטית למעלות (משתמשים ב-phi_hat הקיים)
+phi_ana_deg = np.degrees(phi_hat)
+
+# 2. חילוץ הפאזה האופטימלית והמרה למעלות
+# correction_phasor הוא exp(j*phi), אז נוציא את הזווית
+phi_opt_rad = np.angle(correction_phasor)
+phi_opt_deg = np.degrees(phi_opt_rad)
+
+# 3. חישוב המרחק האוקלידי (בין וקטורי המעלות)
+diff_norm = np.linalg.norm(phi_opt_deg - phi_ana_deg)
+print(f"Euclidean Distance (in degrees space): {diff_norm:.4f}")
+
+# 4. ציור הגרף
+plt.figure(figsize=(12, 6))
+t_us = t * 1e6  # ציר זמן במיקרו-שניות
+
+# גרף הפאזה האנליטית (ירוק מקווקו)
+plt.plot(t_us, phi_ana_deg, label='Analytical Phase (phi_hat)', 
+            color='green', linestyle='--', linewidth=2)
+
+# גרף הפאזה האופטימלית (אדום רציף)
+plt.plot(t_us, phi_opt_deg, label='Optimized Phase (DL Model)', 
+            color='red', alpha=0.7, linewidth=2)
+
+plt.title(f"Phase Correction Comparison [Degrees]\n(Euclidean Diff: {diff_norm:.2f})")
+plt.xlabel("Time [us]")
+plt.ylabel("Phase [Degrees]") # שינינו למעלות
+plt.legend()
+plt.grid(True, alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+
+
+
+

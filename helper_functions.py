@@ -35,12 +35,17 @@ def create_s(z):
 # Inner Product of matrices g (), h().
 # gives a matrix of 
 ##############################################
-def inner_product_mat(g, h):
-        N = len(g)        
-        result = (g.T @ h) / N
-        # dropped the 1/N factor just so we wil be consistent
-        # restored the 1/N fzctor to be consistent with the article   
-        return result
+def inner_product_mat(g, h, t=None):
+    g = np.atleast_2d(g)
+    h = np.atleast_2d(h)
+    N = g.shape[0]
+    p = g.shape[1]
+    q = h.shape[1]
+    res = np.zeros((p, q), dtype=np.float64)
+    for i in range(p):
+        for j in range(q):
+            res[i, j] = np.trapezoid(g[:, i] * h[:, j], x=t)
+    return res
 
 ##############################################
 # Matrix inversion

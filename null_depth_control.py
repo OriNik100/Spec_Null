@@ -7,7 +7,7 @@ def build_D(N):
         D[i, i + 1] = 1
     return D
 
-def solve_nulling_problem(A, b, phi0, beta=1e4, W=None, M=None, t=None, max_iter=50):
+def solve_nulling_problem(A, b, phi_hat, beta=1e4, W=None, M=None, t=None, max_iter=50):
     """
     Solve conjugate-gradient exactly as MATLAB code:
     - A: (N x 2K)
@@ -24,7 +24,7 @@ def solve_nulling_problem(A, b, phi0, beta=1e4, W=None, M=None, t=None, max_iter
     D = build_D(N)
 
     # initial residual and gradient as in MATLAB
-    phi = phi0.copy().reshape(-1, 1)   # (N x 1)
+    phi = phi_hat.copy().reshape(-1, 1)   # (N x 1)
     res = - A.T @ phi + b              # (2K x 1)
     g_old = A @ res - beta * (D.T @ (D @ phi))
 
