@@ -8,10 +8,19 @@ T = 60e-6           # duration (s)
 B = 2e6             # bandwidth (Hz)
 fs = 5 * B         # sampling rate- number of samples per second(1/s)
 N = int(np.round(T * fs))  # (s/s - number)
-t = np.linspace(0, T, N, endpoint=False) #array of time values from 0 to T spaced evenly with N points
-N_FFT = 2**20
+t = np.linspace(0, T, N, endpoint=False) # array of time values from 0 to T spaced evenly with N points
+N_FFT = 2**14
 
-null_freqs = [0.4e6]
+# Nulls real frequencies for N_FFT = 2**14
+null_targets = [0.2e6, 0.3e6, 0.4e6]
+nulls = []
+
+for f_val in null_targets:
+    df = fs / N_FFT
+    bin_idx = int(np.round(f_val / df))
+    nulls.append(bin_idx * df)
+null_freqs = nulls
+print(f"Targets defined at: {[f/1e6 for f in null_freqs]} MHz")
 
 
 # LFM chirp phase (baseband) # center time optional, f0 = 0# amplitude (rect), replace with window if desired

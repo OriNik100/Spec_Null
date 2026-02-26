@@ -26,7 +26,17 @@ s1 = a * np.exp(1j*psi)
 # compute baseband spectrum
     
 freqs, S = hlp.spectrum(s1, fs, N_FFT)
-nulls = [0.4e6]
+
+# Nulls real frequencies for N_FFT = 2**14
+null_targets = [0.4e6]
+nulls = []
+
+for f_val in null_targets:
+    df = fs / N_FFT
+    bin_idx = int(np.round(f_val / df))
+    nulls.append(bin_idx * df)
+
+
 K=len(nulls)
 z = hlp.build_z(a,psi,t,nulls)
 c = np.real(z)
