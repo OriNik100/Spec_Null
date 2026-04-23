@@ -14,7 +14,7 @@ np.random.seed(42)
 
 # OFDM modulation
 
-def OFDM(data, t=t, num=16, magnitude=1):
+def OFDM(data, t=t, num=16, magnitude=1, normalize=False):
     '''
     OFDM modulation of data with 'num' subcarriers.
     Retrurn OFDM in baseband.
@@ -22,12 +22,18 @@ def OFDM(data, t=t, num=16, magnitude=1):
     signal = np.zeros_like(t, dtype=complex)
     for i in range(num):
         signal += np.array(data[i] *np.exp(2*np.pi*1j*i*t/T))
+
+    if normalize:
+        signal *= 1/num
     return magnitude * signal
+
+
 def OFDM_freqs(num=16, T=T):
     '''
     Get the frequencies of the OFDM subcarriers.
     '''
     return np.arange(num) / T
+
 
 if __name__ == "__main__":
     data = np.random.randint(0, 2, 32)
