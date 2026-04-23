@@ -46,12 +46,16 @@ def OFDM_freqs(num=16, T=T):
 
 if __name__ == "__main__":
     data = np.random.randint(0, 2, 32)
-    QPSK_data = (2*data - 1 + 1j*(2*data - 1))*(1/np.sqrt(2))
-    print("sent data: ", QPSK_data)
+    QPSK_data = []
+    for i in range(0, len(data), 2):
+        QPSK_data.append((2*data[i] - 1 + 1j*(2*data[i+1] - 1))*(1/np.sqrt(2)))
     signal = OFDM(QPSK_data)
 
     received_symbols = OFDM_demodulate(signal, 16)
-    print("Received symbols:", received_symbols)
+    #print("Sent symbols:", QPSK_data)
+    #print("Received symbols:", received_symbols)
+    is_different = list(np.abs(QPSK_data - received_symbols) > 0.5)
+    print("Difference:", is_different)
     
     # QPSK to bits
     received_bits = []
@@ -97,7 +101,7 @@ if __name__ == "__main__":
     s_adapted = a * np.exp(1j*psi + 1j * phi_hat.flatten())
     freqs2, S_adapted = hlp.spectrum(s_adapted, fs, 2**14)
 
-    s_isac = s_adapted + 0.07* signal
+    s_isac = s_adapted + signal
     freqs_isac, S_isac = hlp.spectrum(s_isac, fs, 2**14)
 
 
