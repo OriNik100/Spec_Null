@@ -2,6 +2,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 import helper_functions as hlp
 
+
+
+
 # Parameters
 
 T = 60e-6
@@ -27,6 +30,12 @@ def OFDM(data, t=t, num=16, magnitude=1, normalize=False):
         signal *= 1/num
     return magnitude * signal
 
+def OFDM_demodulate (signal, num, T=T, t=t):
+    symbols = []
+    for i in range(num):
+        symbols.append(1/T * np.trapezoid(signal * np.exp(-2*np.pi*1j*i*t/T), x=t))
+    return np.array(symbols).flatten()
+
 
 def OFDM_freqs(num=16, T=T):
     '''
@@ -37,8 +46,20 @@ def OFDM_freqs(num=16, T=T):
 
 if __name__ == "__main__":
     data = np.random.randint(0, 2, 32)
-    QPSK_data = 2*data - 1 + 1j*(2*data - 1)
+    QPSK_data = (2*data - 1 + 1j*(2*data - 1))*(1/np.sqrt(2))
+    print("sent data: ", QPSK_data)
     signal = OFDM(QPSK_data)
+
+    received_symbols = OFDM_demodulate(signal, 16)
+    print("Received symbols:", received_symbols)
+    
+    # QPSK to bits
+    received_bits = []
+    for symbol in received_symbols:
+        received_bits.append(1 if symbol.real > 0 else 0)
+        received_bits.append(1 if symbol.imag > 0 else 0)
+    print("The sent bits: ", data, sep=', ')
+    print("Received bits: ", received_bits) 
 
     plt.figure()
     plt.plot(t, signal.real, label='Real part', color='blue')
@@ -78,7 +99,6 @@ if __name__ == "__main__":
 
     s_isac = s_adapted + 0.07* signal
     freqs_isac, S_isac = hlp.spectrum(s_isac, fs, 2**14)
-
 
 
     # Plotting the spectra of the original and adapted signals
