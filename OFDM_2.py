@@ -31,6 +31,8 @@ def OFDM(data, t=t, num=16, magnitude=1, normalize=False):
     return magnitude * signal
 
 def OFDM_demodulate (signal, num, T=T, t=t):
+    t = np.array(t)
+    signal = np.array(signal)
     symbols = []
     for i in range(num):
         symbols.append(1/T * np.trapezoid(signal * np.exp(-2*np.pi*1j*i*t/T), x=t))
@@ -79,7 +81,7 @@ if __name__ == "__main__":
     frequencies, SIGNAL = hlp.spectrum(signal, fs, 1024)
 
     plt.figure()
-    plt.plot(frequencies, np.abs(SIGNAL))
+    plt.plot(frequencies, 20*np.log10(np.abs(SIGNAL)/np.max(np.abs(SIGNAL))))
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Magnitude')
     plt.title('OFDM Frequency Spectrum')
