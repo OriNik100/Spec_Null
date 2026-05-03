@@ -3,8 +3,6 @@ from matplotlib import pyplot as plt
 import helper_functions as hlp
 
 
-
-
 # Parameters
 
 T = 60e-6
@@ -27,7 +25,7 @@ def OFDM(data, t=t, num=16, magnitude=1, normalize=False):
         signal += np.array(data[i] *np.exp(2*np.pi*1j*i*t/T))
 
     if normalize:
-        signal *= 1/num
+        signal *= 1/np.sqrt(num)
     return magnitude * signal
 
 def OFDM_demodulate (signal, num, T=T, t=t):
