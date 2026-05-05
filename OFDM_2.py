@@ -13,9 +13,11 @@ t = np.linspace(0, T, N, endpoint=False)
 
 np.random.seed(42)
 
+num_subcarriers = 4
+
 # OFDM modulation
 
-def OFDM(data, t=t, num=16, magnitude=1, normalize=False):
+def OFDM(data, t=t, num= num_subcarriers, magnitude=1, normalize=False):
     '''
     OFDM modulation of data with 'num' subcarriers.
     Retrurn OFDM in baseband.
@@ -23,7 +25,7 @@ def OFDM(data, t=t, num=16, magnitude=1, normalize=False):
     signal = np.zeros_like(t, dtype=complex)
     for i in range(num):
         signal += np.array(data[i] *np.exp(2*np.pi*1j*i*t/T))
-
+                    
     if normalize:
         signal *= 1/np.sqrt(num)
     return magnitude * signal
@@ -33,25 +35,91 @@ def OFDM_demodulate (signal, num, T=T, t=t):
     signal = np.array(signal)
     symbols = []
     for i in range(num):
-        symbols.append(1/T * np.trapezoid(signal * np.exp(-2*np.pi*1j*i*t/T), x=t))
+        symbols.append((1/T)*np.trapezoid(signal * np.exp(-2*np.pi*1j*i*t/T), x=t))
     return np.array(symbols).flatten()
 
 
-def OFDM_freqs(num=16, T=T):
+def OFDM_freqs(num= num_subcarriers, T=T):
     '''
     Get the frequencies of the OFDM subcarriers.
     '''
     return np.arange(num) / T
 
+def QPSK_modulation(bits):
+    """ Modulate the input bits using QPSK modulation. """
+    if len(bits) % 2 != 0:
+        raise ValueError("Number of bits must be even for QPSK modulation.")
+    
+    # bits reshape
+    bit_pairs = bits.reshape(-1, 2)
+
+    # bits to QPSK symbols conversion
+    symbols = np.zeros(len(bit_pairs), dtype=complex)
+    for i, pair in enumerate(bit_pairs):
+        if np.array_equal(pair, [0, 0]):
+            symbols[i] = 1 + 1j
+        elif np.array_equal(pair, [0, 1]):
+            symbols[i] = 1 - 1j
+        elif np.array_equal(pair, [1, 0]):
+            symbols[i] = -1 + 1j
+        elif np.array_equal(pair, [1, 1]):
+            symbols[i] = -1 - 1j
+    return symbols/np.sqrt(2) # return normalized bits
 
 if __name__ == "__main__":
-    data = np.random.randint(0, 2, 32)
-    QPSK_data = []
-    for i in range(0, len(data), 2):
-        QPSK_data.append((2*data[i] - 1 + 1j*(2*data[i+1] - 1))*(1/np.sqrt(2)))
+    
+    data = np.random.randint(0, 2, num_subcarriers * 2)
+    QPSK_data = QPSK_modulation(data)
     signal = OFDM(QPSK_data)
+    
+    print("The sent symbols: ", QPSK_data)
+    
 
-    received_symbols = OFDM_demodulate(signal, 16)
+    
+    plt.figure(figsize=(10, 6))
+    
+    # נייצר ונצייר כל תת-נושא בנפרד
+    for i in range(num_subcarriers):
+        # יצירת גל הנושא הבודד (בדיוק כמו בתוך פונקציית ה-OFDM)
+        subcarrier_signal = np.array(QPSK_data[i] * np.exp(2*np.pi*1j*i*t/T))
+        
+        # אנחנו נצייר רק את החלק הממשי (Real) כדי שהגרף יהיה קריא
+        plt.plot(t, subcarrier_signal.real)
+
+    plt.xlabel('Time')
+    plt.ylabel('Amplitude')
+    plt.title(f'Individual OFDM Subcarriers (Real Part)')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    
+    
+    plt.figure(figsize=(10, 6))
+    
+    for i in range(num_subcarriers):
+        # 1. יצירת גל הנושא
+        subcarrier_signal = np.array(QPSK_data[i] * np.exp(2*np.pi*1j*i*t/T))
+        
+        # 2. חישוב הספקטרום בעזרת פונקציית העזר שלך
+        freqs_sub, S_sub = hlp.spectrum(subcarrier_signal, fs, 2**14)
+        
+        # 3. ציור בסקאלה *לינארית* (ללא Log10) כדי לראות את החיתוך באפס
+        plt.plot(freqs_sub/1e6, np.abs(S_sub))
+
+    # נגביל את ציר ה-X כדי להתמקד רק באזור של 4 תתי-הנושאים שלנו
+    # התדרים הם בכפולות של 1/T
+    plt.xlim(-2 / (T * 1e6), (num_subcarriers + 1) / (T * 1e6)) 
+    
+    plt.xlabel('Frequency [MHz]')
+    plt.ylabel('Magnitude (Linear)')
+    plt.title('OFDM Orthogonality in Frequency Domain (Sinc Pulses)')
+    plt.grid(True)
+    plt.show()
+    # ---------------------------------------------------------
+    
+
+
+    received_symbols = OFDM_demodulate(signal, num_subcarriers)
     #print("Sent symbols:", QPSK_data)
     #print("Received symbols:", received_symbols)
     is_different = list(np.abs(QPSK_data - received_symbols) > 0.5)
@@ -60,10 +128,10 @@ if __name__ == "__main__":
     # QPSK to bits
     received_bits = []
     for symbol in received_symbols:
-        received_bits.append(1 if symbol.real > 0 else 0)
-        received_bits.append(1 if symbol.imag > 0 else 0)
-    print("The sent bits: ", data, sep=', ')
-    print("Received bits: ", received_bits) 
+        received_bits.append(0 if symbol.real > 0 else 1)
+        received_bits.append(0 if symbol.imag > 0 else 1)
+    print("The sent bits: ", data)
+    print("Received bits: ", np.array(received_bits)) 
 
     plt.figure()
     plt.plot(t, signal.real, label='Real part', color='blue')
@@ -79,13 +147,18 @@ if __name__ == "__main__":
     frequencies, SIGNAL = hlp.spectrum(signal, fs, 1024)
 
     plt.figure()
-    plt.plot(frequencies, 20*np.log10(np.abs(SIGNAL)/np.max(np.abs(SIGNAL))))
+    plt.plot(frequencies/1e6, 20*np.log10(np.abs(SIGNAL)/np.max(np.abs(SIGNAL))+1e-40))
+    #plt.xlim(-0.5, 0.5) # מציגים רק בין -500 ל-500 קילו-הרץ
+    #plt.ylim(-60, 5)
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Magnitude')
     plt.title('OFDM Frequency Spectrum')
     plt.grid(True)
     plt.show()
 
+    
+    '''
+    
     # Nulled LFM and OFDM insertion
 
     from version1 import getphi
@@ -140,7 +213,7 @@ if __name__ == "__main__":
 
 
 
-
+    '''
 
 
 
