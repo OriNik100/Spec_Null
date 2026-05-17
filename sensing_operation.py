@@ -13,7 +13,7 @@ T = 60e-6
 t = np.arange(0, T, 1/fs)
 
 SNR_dB = -20
-N_trials = 100000
+N_trials = 10000
 true_distance = 1500
 filename = 'simulation_results.npz'
 
@@ -120,7 +120,6 @@ def plot_correlation_comparison(signals_dict, SNR_dB, true_distance, fs, c, titl
     plt.grid(True, linestyle='--', linewidth=0.6)
     plt.legend(fontsize=12, loc='upper right')
     plt.tight_layout()
-
 
 # ============================================================
 # ROC + RMSE calculation 
@@ -275,7 +274,7 @@ print("RMSE vs SNR sweep (filtered signals)...")
 print("="*55)
 
 SNR_range_dB = np.arange(-30, 5, 2)
-N_trials_sweep = 20000
+N_trials_sweep = 2000
 
 rmse_results = {
     'Ideal LFM Chirp': np.zeros(len(SNR_range_dB)),
