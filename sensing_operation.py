@@ -162,7 +162,7 @@ def calculate_roc_for_signal(tx_signal, SNR_dB, N_trials, true_distance, fs, nam
 
     min_thresh = min(np.min(max_vals_noise_only), np.min(max_vals_signal_plus_noise))
     max_thresh = max(np.max(max_vals_noise_only), np.max(max_vals_signal_plus_noise))
-    thresholds = np.linspace(min_thresh, max_thresh, 500)
+    thresholds = np.linspace(1, 1200, 500)
 
     P_fa = np.zeros(len(thresholds))
     P_d  = np.zeros(len(thresholds))
