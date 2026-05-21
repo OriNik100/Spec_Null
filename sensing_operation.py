@@ -162,7 +162,7 @@ def calculate_roc_for_signal(tx_signal, SNR_dB, N_trials, true_distance, fs, nam
 
     min_thresh = min(np.min(max_vals_noise_only), np.min(max_vals_signal_plus_noise))
     max_thresh = max(np.max(max_vals_noise_only), np.max(max_vals_signal_plus_noise))
-    thresholds = np.linspace(1, 1200, 500)
+    thresholds = np.linspace(1, 1200, 5000)
 
     P_fa = np.zeros(len(thresholds))
     P_d  = np.zeros(len(thresholds))
@@ -175,6 +175,72 @@ def calculate_roc_for_signal(tx_signal, SNR_dB, N_trials, true_distance, fs, nam
     print(f"{name}: RMSE = {rmse_distance:.3f} m")
     return P_fa, P_d, rmse_distance
 
+def calculate_roc_with_range_gate(tx_signal, SNR_dB, N_trials, true_distance, fs, name, tolerance_bins=15):
+    """
+    מחשבת ROC ו-RMSE על ידי חיפוש מקסימום בתוך חלון (Range Gate) סביב המיקום האמיתי.
+    
+    tolerance_bins: מספר הדגימות לחפש אחורה וקדימה מהמיקום האמיתי הצפוי.
+    """
+    estimation_errors = np.zeros(N_trials)
+    delay = (2 * true_distance) / c
+    Ps = np.mean(np.abs(tx_signal)**2)
+    noise_power = Ps * 10**(-SNR_dB / 10)
+
+    total_samples = len(tx_signal) + int(2 * 3000 / c * fs)
+    tx_padded = np.pad(tx_signal, (0, total_samples - len(tx_signal)))
+    X_f = fft(tx_padded)
+    freqs = fftfreq(total_samples, 1/fs)
+    phase_shift = np.exp(-1j * 2 * np.pi * freqs * delay)
+    X_f_delayed = X_f * phase_shift
+    rx_signal_clean = ifft(X_f_delayed)
+
+    max_vals_noise_only = np.zeros(N_trials)
+    max_vals_signal_plus_noise = np.zeros(N_trials)
+
+    # calculating the real time where we expect to detect the signal
+    true_idx = int(np.round(delay * fs))
+
+    for i in range(N_trials):
+        noise_i = np.random.normal(0, np.sqrt(noise_power / 2), len(rx_signal_clean))
+        noise_q = np.random.normal(0, np.sqrt(noise_power / 2), len(rx_signal_clean))
+        complex_noise = noise_i + 1j * noise_q
+
+        rx_noise_only = complex_noise
+        rx_sig_noise  = rx_signal_clean + complex_noise
+
+        corr_noise_only = np.correlate(rx_noise_only, tx_signal, mode='valid')
+        corr_sig_noise  = np.correlate(rx_sig_noise,  tx_signal, mode='valid')
+
+        # הגדרת גבולות חלון החיפוש (Range Gate)
+        start_idx = max(0, true_idx - tolerance_bins)
+        end_idx = min(len(corr_noise_only), true_idx + tolerance_bins + 1)
+
+        # לקיחת מקסימום *רק* בתוך חלון החיפוש
+        max_vals_noise_only[i] = np.max(np.abs(corr_noise_only[start_idx:end_idx]))
+        max_vals_signal_plus_noise[i] = np.max(np.abs(corr_sig_noise[start_idx:end_idx]))
+
+        # שערוך המרחק (RMSE) מבוצע גם הוא על סמך המקסימום בתוך החלון
+        est_delay_idx_in_window = np.argmax(np.abs(corr_sig_noise[start_idx:end_idx]))
+        est_delay_idx = start_idx + est_delay_idx_in_window
+        est_delay_time = est_delay_idx / fs
+        estimation_errors[i] = est_delay_time - delay
+
+    # תיקון חישוב הספים (Thresholds) לטווח הדינמי האמיתי של התוצאות
+    min_thresh = min(np.min(max_vals_noise_only), np.min(max_vals_signal_plus_noise))
+    max_thresh = max(np.max(max_vals_noise_only), np.max(max_vals_signal_plus_noise))
+    thresholds = np.linspace(1, 1200, 5000)
+
+    P_fa = np.zeros(len(thresholds))
+    P_d  = np.zeros(len(thresholds))
+    for idx, thresh in enumerate(thresholds):
+        P_fa[idx] = np.sum(max_vals_noise_only > thresh) / N_trials
+        P_d[idx]  = np.sum(max_vals_signal_plus_noise > thresh) / N_trials
+
+    rmse_time = np.sqrt(np.mean(estimation_errors**2))
+    rmse_distance = rmse_time * c / 2
+    print(f"{name}: RMSE = {rmse_distance:.3f} m (Window: ±{tolerance_bins} bins)")
+    
+    return P_fa, P_d, rmse_distance
 
 # ============================================================
 # 1. Load signals + create chirp
@@ -256,6 +322,29 @@ plt.tight_layout()
 plt.show()
 
 # ============================================================
+# 5.5. ROC after range gating at SNR=-8dB
+# ============================================================
+print(f"\nRunning ROC with Range Gating at SNR = {SNR_dB} dB ({N_trials} trials each)...")
+P_fa_chirp,  P_d_chirp,  _ = calculate_roc_with_range_gate(tx_chirp_f,  SNR_dB, N_trials, true_distance, fs, "Chirp")
+P_fa_isac,   P_d_isac,   _ = calculate_roc_with_range_gate(tx_isac_f,   SNR_dB, N_trials, true_distance, fs, "ISAC")
+P_fa_vouras, P_d_vouras, _ = calculate_roc_with_range_gate(tx_vouras_f, SNR_dB, N_trials, true_distance, fs, "Vouras")
+
+plt.figure(figsize=(10, 8))
+plt.plot(P_fa_chirp,  P_d_chirp,  linewidth=2.5, color='blue',  label='Ideal LFM Chirp')
+plt.plot(P_fa_isac,   P_d_isac,   linewidth=2.5, color='green', linestyle='-',  label='ISAC Signal')
+plt.plot(P_fa_vouras, P_d_vouras, linewidth=2.5, color='red',   linestyle='-.', label='Vouras Signal')
+plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
+plt.title(f'ROC (filtered to [0, B], SNR = {SNR_dB} dB)', fontsize=14)
+plt.xlabel('Probability of False Alarm ($P_{FA}$)', fontsize=12)
+plt.ylabel('Probability of Detection ($P_D$)', fontsize=12)
+plt.xlim([-0.01, 1.0]); plt.ylim([0.0, 1.05])
+plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+plt.legend(fontsize=12, loc='lower right')
+plt.tight_layout()
+
+plt.show()
+
+# ============================================================
 # 6. Correlation comparison plot
 # ============================================================
 signals_to_compare = {
@@ -310,3 +399,25 @@ plt.legend(fontsize=12, loc='upper right')
 plt.tight_layout()
 
 plt.show()
+
+
+"""
+פה אני אכתוב את כל משנתי בנוגע ללמה זה בינתיים לא עובד ואיך לתקן
+
+
+1. ROC and Pulse shape do not really correlate:
+ROC כשאנחנו משווים פונקציונליות של אותות חישה באמצעות גרף 
+אנחנו בעצם לא מתייחסים בכלל לצורת האות שלנו, במיוחד לא בגילוי מטרה יחידה
+
+מה שכן משנה זה האנרגיה של האות, ככל שלאות אנרגיה גבוהה יותר, כך הסיכוי לגילוי גבוה יותר
+כל זה בהנחה שאנחנו דוגמים *בדיוק איפה שאמור להיות העצם*, אם נדגום במקום עם הקורלציה המקסימלית זה לא יעבוד
+
+2. Why it makes sense to define it as such?
+תחשוב שאנחנו רוצים לראות את הסיכוי לזהות שני עצמים ולא אחד. זו בעיה קלאסית שהרבה פעמים מסתכלים עליה
+האם גם כעת אנחנו ניקח את שתי הנקודות בעלות הקורלציה המקסימלית? כמובן שלא! אנחנו ניקח במיקומים המדויקים
+
+
+3. I do not trust this code yet
+עוד לא יצא לי לקרוא את הקוד שורה שורה, מציע שנעשה את זה כמו שצריך כי זה קוד צ'אטי מדי
+צריך לכתוב עליו הערות ולסדר את הכל שיהיה מובן וקריא לנו, ושיהיה לנו ברור מה ואיך קורה בכל שלב בדיוק
+"""
