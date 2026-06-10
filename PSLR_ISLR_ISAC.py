@@ -137,9 +137,9 @@ if __name__ == "__main__":
     
     try:
         with np.load(filename) as data:
-            tx_isac = data['isac_siganl']
+            tx_isac = data['isac_signal']
             #tx_isac = tx_isac *np.hamming(len(tx_isac))
-            tx_vouras = data['vouras_siganl'] 
+            tx_vouras = data['vouras_signal'] 
             #tx_vouras = tx_vouras *np.hamming(len(tx_vouras))
             print("Successfully loaded custom signals.")
     except FileNotFoundError:

@@ -12,7 +12,7 @@ fs = 5 * B
 T = 60e-6
 t = np.arange(0, T, 1/fs)
 
-SNR_dB = -20
+SNR_dB = -10
 N_trials = 10000
 true_distance = 1500
 filename = 'simulation_results.npz'
@@ -208,8 +208,8 @@ def calculate_roc_with_range_gate(tx_signal, SNR_dB, N_trials, true_distance, fs
         rx_noise_only = complex_noise
         rx_sig_noise  = rx_signal_clean + complex_noise
 
-        corr_noise_only = np.correlate(rx_noise_only, tx_signal, mode='valid')
-        corr_sig_noise  = np.correlate(rx_sig_noise,  tx_signal, mode='valid')
+        corr_noise_only = np.correlate(rx_noise_only, tx_signal, mode='full')
+        corr_sig_noise  = np.correlate(rx_sig_noise,  tx_signal, mode='full')
 
         # הגדרת גבולות חלון החיפוש (Range Gate)
         start_idx = max(0, true_idx - tolerance_bins)
@@ -242,6 +242,108 @@ def calculate_roc_with_range_gate(tx_signal, SNR_dB, N_trials, true_distance, fs
     
     return P_fa, P_d, rmse_distance
 
+
+# ============================================================
+# Ambiguity Function Calculation and Plotting
+# ============================================================
+def calculate_ambiguity_function(signal, fs, max_doppler, num_doppler_bins=101):
+    """
+    Calculates the ambiguity function for a given signal.
+    
+    signal: 1D array of the transmitted signal.
+    fs: Sampling frequency (Hz).
+    max_doppler: Maximum Doppler frequency shift to calculate (Hz) +/-.
+    num_doppler_bins: Number of samples along the Doppler axis.
+    
+    Returns: delays (time axis), dopplers (frequency axis), and ambiguity_matrix (normalized).
+    """
+    N = len(signal)
+    t = np.arange(N) / fs
+    
+    # Create the Doppler axis
+    dopplers = np.linspace(-max_doppler, max_doppler, num_doppler_bins)
+    
+    # Length of the delay axis (full cross-correlation length is 2*N - 1)
+    delay_len = 2 * N - 1
+    ambiguity_matrix = np.zeros((num_doppler_bins, delay_len), dtype=complex)
+    
+    # Calculate correlation for each Doppler shift
+    for i, fd in enumerate(dopplers):
+        # Apply Doppler shift to the signal
+        doppler_shifted_signal = signal * np.exp(1j * 2 * np.pi * fd * t)
+        
+        # Cross-correlation with the original signal
+        ambiguity_matrix[i, :] = np.correlate(doppler_shifted_signal, signal, mode='full')
+        
+    # Normalize the matrix and take the absolute value (magnitude)
+    ambiguity_matrix = np.abs(ambiguity_matrix)
+    #ambiguity_matrix /= np.max(ambiguity_matrix)
+    
+    # Create the delay axis centered around zero
+    delays = (np.arange(delay_len) - (N - 1)) / fs
+    
+    return delays, dopplers, ambiguity_matrix
+
+
+def plot_ambiguity_function(delays, dopplers, ambiguity_matrix, title="Ambiguity Function"):
+    """
+    Plots the ambiguity function as a 2D heatmap contour.
+    """
+    plt.figure(figsize=(10, 8))
+    
+    # Convert the delay axis to microseconds for better visual scaling
+    X, Y = np.meshgrid(delays * 1e6, dopplers)
+    
+    # Create the filled contour plot (heatmap)
+    cp = plt.contourf(X, Y, ambiguity_matrix, levels=50, cmap='jet')
+    plt.colorbar(cp, label='Normalized Magnitude')
+    
+    plt.title(title, fontsize=14)
+    plt.xlabel('Delay [$\mu s$]', fontsize=12)
+    plt.ylabel('Doppler Shift [Hz]', fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+# ============================================================
+# 3D Ambiguity Function Plotting
+# ============================================================
+# Note: You might need to add this import at the top of your file 
+# depending on your matplotlib version, though usually it's built-in now:
+# from mpl_toolkits.mplot3d import Axes3D
+
+def plot_ambiguity_function_3d(delays, dopplers, ambiguity_matrix, title="3D Ambiguity Function"):
+    """
+    Plots the ambiguity function as a 3D surface plot.
+    """
+    fig = plt.figure(figsize=(12, 8))
+    
+    # Create a 3D axis
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Convert the delay axis to microseconds for better visual scaling
+    X, Y = np.meshgrid(delays * 1e6, dopplers)
+    
+    # Plot the 3D surface
+    # rstride and cstride control the resolution of the grid (lower is finer)
+    # alpha adds a slight transparency so we can see the shape better
+    surf = ax.plot_surface(X, Y, ambiguity_matrix, cmap='viridis', 
+                           rstride=2, cstride=2, linewidth=0, antialiased=True, alpha=0.9)
+    
+    # Add a color bar mapping values to colors
+    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Normalized Magnitude')
+    
+    # Set labels and title
+    ax.set_title(title, fontsize=14, pad=20)
+    ax.set_xlabel('Delay [$\mu s$]', fontsize=12, labelpad=10)
+    ax.set_ylabel('Doppler Shift [Hz]', fontsize=12, labelpad=10)
+    ax.set_zlabel('Magnitude', fontsize=12, labelpad=10)
+    
+    # Adjust viewing angle for a better initial perspective (Elevation, Azimuth)
+    ax.view_init(elev=30, azim=45)
+    
+    plt.tight_layout()
+
+
 # ============================================================
 # 1. Load signals + create chirp
 # ============================================================
@@ -249,8 +351,8 @@ k = B / T
 tx_chirp = np.exp(1j * np.pi * k * t**2)
 
 with np.load(filename) as data:
-    tx_isac   = data['isac_siganl']
-    tx_vouras = data['vouras_siganl']
+    tx_isac   = data['isac_signal']
+    tx_vouras = data['vouras_signal']
 print("Signals loaded.")
 
 # ============================================================
@@ -399,6 +501,58 @@ plt.legend(fontsize=12, loc='upper right')
 plt.tight_layout()
 
 plt.show()
+
+
+# ============================================================
+# 8. Plot Ambiguity Functions
+# ============================================================
+print("\n" + "="*55)
+print("Calculating Ambiguity Functions...")
+print("="*55)
+
+# Define maximum Doppler shift (e.g., 50 kHz - adjust based on your target's expected velocity)
+MAX_DOPPLER = 50e3  
+
+# --- Ideal LFM Chirp ---
+delays_c, dopplers_c, af_chirp = calculate_ambiguity_function(tx_chirp_f, fs, max_doppler=MAX_DOPPLER)
+plot_ambiguity_function(delays_c, dopplers_c, af_chirp, title="Ambiguity Function: Ideal LFM Chirp")
+
+# --- ISAC Signal ---
+delays_i, dopplers_i, af_isac = calculate_ambiguity_function(tx_isac_f, fs, max_doppler=MAX_DOPPLER)
+plot_ambiguity_function(delays_i, dopplers_i, af_isac, title="Ambiguity Function: ISAC Signal")
+
+# --- Vouras Signal ---
+delays_v, dopplers_v, af_vouras = calculate_ambiguity_function(tx_vouras_f, fs, max_doppler=MAX_DOPPLER)
+plot_ambiguity_function(delays_v, dopplers_v, af_vouras, title="Ambiguity Function: Vouras Signal")
+
+plt.show()
+
+# ============================================================
+# 8. Plot 3D Ambiguity Functions
+# ============================================================
+print("\n" + "="*55)
+print("Calculating and Plotting 3D Ambiguity Functions...")
+print("="*55)
+
+MAX_DOPPLER = 50e3  
+
+# --- Ideal LFM Chirp ---
+delays_c, dopplers_c, af_chirp = calculate_ambiguity_function(tx_chirp_f, fs, max_doppler=MAX_DOPPLER)
+plot_ambiguity_function_3d(delays_c, dopplers_c, af_chirp, title="3D Ambiguity Function: Ideal LFM Chirp")
+
+# --- ISAC Signal ---
+delays_i, dopplers_i, af_isac = calculate_ambiguity_function(tx_isac_f, fs, max_doppler=MAX_DOPPLER)
+plot_ambiguity_function_3d(delays_i, dopplers_i, af_isac, title="3D Ambiguity Function: ISAC Signal")
+
+# --- Vouras Signal ---
+delays_v, dopplers_v, af_vouras = calculate_ambiguity_function(tx_vouras_f, fs, max_doppler=MAX_DOPPLER)
+plot_ambiguity_function_3d(delays_v, dopplers_v, af_vouras, title="3D Ambiguity Function: Vouras Signal")
+
+plt.show()
+
+
+
+
 
 
 """
