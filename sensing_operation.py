@@ -12,8 +12,8 @@ fs = 5 * B
 T = 60e-6
 t = np.arange(0, T, 1/fs)
 
-SNR_dB = -10
-N_trials = 10000
+SNR_dB = -35
+N_trials = 50000
 true_distance = 1500
 filename = 'simulation_results.npz'
 
@@ -124,10 +124,18 @@ def plot_correlation_comparison(signals_dict, SNR_dB, true_distance, fs, c, titl
 # ============================================================
 # ROC + RMSE calculation 
 # ============================================================
-def calculate_roc_for_signal(tx_signal, SNR_dB, N_trials, true_distance, fs, name):
+import numpy as np
+from scipy.fft import fft, ifft, fftfreq
+
+def calculate_roc_for_signal___(tx_signal, SNR_dB, N_trials, true_distance, fs, name):
 
     estimation_errors = np.zeros(N_trials)
-    delay = (2 * true_distance) / c
+    # c must be defined globally or passed as an argument (e.g., c = 3e8)
+    delay = (2 * true_distance) / c 
+    
+    # Calculate the exact index corresponding to the true distance
+    true_delay_idx = int(np.round(delay * fs))
+    
     Ps = np.mean(np.abs(tx_signal)**2)
     noise_power = Ps * 10**(-SNR_dB / 10)
 
@@ -139,8 +147,9 @@ def calculate_roc_for_signal(tx_signal, SNR_dB, N_trials, true_distance, fs, nam
     X_f_delayed = X_f * phase_shift
     rx_signal_clean = ifft(X_f_delayed)
 
-    max_vals_noise_only = np.zeros(N_trials)
-    max_vals_signal_plus_noise = np.zeros(N_trials)
+    # Arrays to store the correlation values at the true delay index
+    vals_noise_only = np.zeros(N_trials)
+    vals_signal_plus_noise = np.zeros(N_trials)
 
     for i in range(N_trials):
         noise_i = np.random.normal(0, np.sqrt(noise_power / 2), len(rx_signal_clean))
@@ -153,92 +162,112 @@ def calculate_roc_for_signal(tx_signal, SNR_dB, N_trials, true_distance, fs, nam
         corr_noise_only = np.correlate(rx_noise_only, tx_signal, mode='valid')
         corr_sig_noise  = np.correlate(rx_sig_noise,  tx_signal, mode='valid')
 
-        max_vals_noise_only[i] = np.max(np.abs(corr_noise_only))
-        max_vals_signal_plus_noise[i] = np.max(np.abs(corr_sig_noise))
+        # Sample the correlation at the exact known location (true distance)
+        vals_noise_only[i] = np.abs(corr_noise_only[true_delay_idx])
+        vals_signal_plus_noise[i] = np.abs(corr_sig_noise[true_delay_idx])
 
+        # Estimate the delay for RMSE calculation (taking the max as before)
         est_delay_idx  = np.argmax(np.abs(corr_sig_noise))
         est_delay_time = est_delay_idx / fs
         estimation_errors[i] = est_delay_time - delay
 
-    min_thresh = min(np.min(max_vals_noise_only), np.min(max_vals_signal_plus_noise))
-    max_thresh = max(np.max(max_vals_noise_only), np.max(max_vals_signal_plus_noise))
-    thresholds = np.linspace(1, 1200, 5000)
-
+    # Calculate dynamic thresholds based on the sampled values
+    min_thresh = min(np.min(vals_noise_only), np.min(vals_signal_plus_noise))
+    max_thresh = max(np.max(vals_noise_only), np.max(vals_signal_plus_noise))
+    
+    # Use the min and max thresholds for the linspace instead of hardcoded values
+    thresholds = np.linspace(min_thresh, max_thresh, 500000) 
     P_fa = np.zeros(len(thresholds))
     P_d  = np.zeros(len(thresholds))
+    
     for idx, thresh in enumerate(thresholds):
-        P_fa[idx] = np.sum(max_vals_noise_only > thresh) / N_trials
-        P_d[idx]  = np.sum(max_vals_signal_plus_noise > thresh) / N_trials
+        P_fa[idx] = np.sum(vals_noise_only > thresh) / N_trials
+        P_d[idx]  = np.sum(vals_signal_plus_noise > thresh) / N_trials
 
     rmse_time = np.sqrt(np.mean(estimation_errors**2))
     rmse_distance = rmse_time * c / 2
     print(f"{name}: RMSE = {rmse_distance:.3f} m")
+    
     return P_fa, P_d, rmse_distance
 
-def calculate_roc_with_range_gate(tx_signal, SNR_dB, N_trials, true_distance, fs, name, tolerance_bins=15):
-    """
-    מחשבת ROC ו-RMSE על ידי חיפוש מקסימום בתוך חלון (Range Gate) סביב המיקום האמיתי.
+import numpy as np
+from scipy.fft import fft, ifft, fftfreq
+from scipy.signal import correlate
+from sklearn.metrics import roc_curve
+
+def calculate_roc_for_signal(tx_signal, SNR_dB, N_trials, true_distance, fs, name, c=3e8, max_distance=3000):
     
-    tolerance_bins: מספר הדגימות לחפש אחורה וקדימה מהמיקום האמיתי הצפוי.
-    """
     estimation_errors = np.zeros(N_trials)
-    delay = (2 * true_distance) / c
+    delay = (2 * true_distance) / c 
+    
+    # Calculate the exact index corresponding to the true distance
+    true_delay_idx = int(np.round(delay * fs))
+    
     Ps = np.mean(np.abs(tx_signal)**2)
     noise_power = Ps * 10**(-SNR_dB / 10)
 
-    total_samples = len(tx_signal) + int(2 * 3000 / c * fs)
+    # Dynamic padding based on max expected distance
+    max_delay = (2 * max_distance) / c
+    total_samples = len(tx_signal) + int(np.ceil(max_delay * fs))
     tx_padded = np.pad(tx_signal, (0, total_samples - len(tx_signal)))
+    
     X_f = fft(tx_padded)
     freqs = fftfreq(total_samples, 1/fs)
     phase_shift = np.exp(-1j * 2 * np.pi * freqs * delay)
     X_f_delayed = X_f * phase_shift
     rx_signal_clean = ifft(X_f_delayed)
 
-    max_vals_noise_only = np.zeros(N_trials)
-    max_vals_signal_plus_noise = np.zeros(N_trials)
+    vals_noise_only = np.zeros(N_trials)
+    vals_signal_plus_noise = np.zeros(N_trials)
 
-    # calculating the real time where we expect to detect the signal
-    true_idx = int(np.round(delay * fs))
+    # Pre-calculate standard deviation for noise
+    noise_std = np.sqrt(noise_power / 2)
 
     for i in range(N_trials):
-        noise_i = np.random.normal(0, np.sqrt(noise_power / 2), len(rx_signal_clean))
-        noise_q = np.random.normal(0, np.sqrt(noise_power / 2), len(rx_signal_clean))
-        complex_noise = noise_i + 1j * noise_q
+        # Generate complex noise
+        complex_noise = np.random.normal(0, noise_std, len(rx_signal_clean)) + \
+                   1j * np.random.normal(0, noise_std, len(rx_signal_clean))
 
         rx_noise_only = complex_noise
         rx_sig_noise  = rx_signal_clean + complex_noise
 
-        corr_noise_only = np.correlate(rx_noise_only, tx_signal, mode='full')
-        corr_sig_noise  = np.correlate(rx_sig_noise,  tx_signal, mode='full')
+        # Using scipy's correlate with FFT is MUCH faster for long signals
+        corr_noise_only = correlate(rx_noise_only, tx_signal, mode='valid', method='fft')
+        corr_sig_noise  = correlate(rx_sig_noise,  tx_signal, mode='valid', method='fft')
 
-        # הגדרת גבולות חלון החיפוש (Range Gate)
-        start_idx = max(0, true_idx - tolerance_bins)
-        end_idx = min(len(corr_noise_only), true_idx + tolerance_bins + 1)
+        vals_noise_only[i] = np.abs(corr_noise_only[true_delay_idx])
+        vals_signal_plus_noise[i] = np.abs(corr_sig_noise[true_delay_idx])
 
-        # לקיחת מקסימום *רק* בתוך חלון החיפוש
-        max_vals_noise_only[i] = np.max(np.abs(corr_noise_only[start_idx:end_idx]))
-        max_vals_signal_plus_noise[i] = np.max(np.abs(corr_sig_noise[start_idx:end_idx]))
-
-        # שערוך המרחק (RMSE) מבוצע גם הוא על סמך המקסימום בתוך החלון
-        est_delay_idx_in_window = np.argmax(np.abs(corr_sig_noise[start_idx:end_idx]))
-        est_delay_idx = start_idx + est_delay_idx_in_window
-        est_delay_time = est_delay_idx / fs
+        # --- Sub-sample peak estimation (Parabolic Interpolation) ---
+        abs_corr = np.abs(corr_sig_noise)
+        est_delay_idx = np.argmax(abs_corr)
+        
+        # Parabolic interpolation for fine tuning the peak (if not at the very edges)
+        if 0 < est_delay_idx < len(abs_corr) - 1:
+            alpha = abs_corr[est_delay_idx - 1]
+            beta  = abs_corr[est_delay_idx]
+            gamma = abs_corr[est_delay_idx + 1]
+            # Offset from the discrete peak (-0.5 to 0.5)
+            p = 0.5 * (alpha - gamma) / (alpha - 2*beta + gamma)
+            fine_est_delay_idx = est_delay_idx + p
+        else:
+            fine_est_delay_idx = est_delay_idx
+            
+        est_delay_time = fine_est_delay_idx / fs
         estimation_errors[i] = est_delay_time - delay
 
-    # תיקון חישוב הספים (Thresholds) לטווח הדינמי האמיתי של התוצאות
-    min_thresh = min(np.min(max_vals_noise_only), np.min(max_vals_signal_plus_noise))
-    max_thresh = max(np.max(max_vals_noise_only), np.max(max_vals_signal_plus_noise))
-    thresholds = np.linspace(1, 1200, 5000)
+    # --- Fast and accurate ROC calculation using sklearn ---
+    # Create labels: 0 for noise only, 1 for signal+noise
+    y_true = np.concatenate([np.zeros(N_trials), np.ones(N_trials)])
+    y_scores = np.concatenate([vals_noise_only, vals_signal_plus_noise])
+    
+    # Calculate ROC curve. fpr = P_fa, tpr = P_d
+    P_fa, P_d, thresholds = roc_curve(y_true, y_scores)
 
-    P_fa = np.zeros(len(thresholds))
-    P_d  = np.zeros(len(thresholds))
-    for idx, thresh in enumerate(thresholds):
-        P_fa[idx] = np.sum(max_vals_noise_only > thresh) / N_trials
-        P_d[idx]  = np.sum(max_vals_signal_plus_noise > thresh) / N_trials
-
+    # RMSE Calculation
     rmse_time = np.sqrt(np.mean(estimation_errors**2))
     rmse_distance = rmse_time * c / 2
-    print(f"{name}: RMSE = {rmse_distance:.3f} m (Window: ±{tolerance_bins} bins)")
+    print(f"{name}: RMSE = {rmse_distance:.3f} m")
     
     return P_fa, P_d, rmse_distance
 
@@ -301,6 +330,8 @@ def plot_ambiguity_function(delays, dopplers, ambiguity_matrix, title="Ambiguity
     plt.title(title, fontsize=14)
     plt.xlabel('Delay [$\mu s$]', fontsize=12)
     plt.ylabel('Doppler Shift [Hz]', fontsize=12)
+    plt.xlim(-15,15)
+    plt.ylim(-20000,20000)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
@@ -337,6 +368,7 @@ def plot_ambiguity_function_3d(delays, dopplers, ambiguity_matrix, title="3D Amb
     ax.set_xlabel('Delay [$\mu s$]', fontsize=12, labelpad=10)
     ax.set_ylabel('Doppler Shift [Hz]', fontsize=12, labelpad=10)
     ax.set_zlabel('Magnitude', fontsize=12, labelpad=10)
+    
     
     # Adjust viewing angle for a better initial perspective (Elevation, Azimuth)
     ax.view_init(elev=30, azim=45)
@@ -403,43 +435,28 @@ plt.tight_layout()
 # ============================================================
 # 5. ROC at SNR=-8dB
 # ============================================================
+# ============================================================
+# 5. ROC at SNR=-8dB
+# ============================================================
 print(f"\nRunning ROC at SNR = {SNR_dB} dB ({N_trials} trials each)...")
 P_fa_chirp,  P_d_chirp,  _ = calculate_roc_for_signal(tx_chirp_f,  SNR_dB, N_trials, true_distance, fs, "Chirp")
 P_fa_isac,   P_d_isac,   _ = calculate_roc_for_signal(tx_isac_f,   SNR_dB, N_trials, true_distance, fs, "ISAC")
 P_fa_vouras, P_d_vouras, _ = calculate_roc_for_signal(tx_vouras_f, SNR_dB, N_trials, true_distance, fs, "Vouras")
 
 plt.figure(figsize=(10, 8))
-plt.plot(P_fa_chirp,  P_d_chirp,  linewidth=2.5, color='blue',  label='Ideal LFM Chirp')
-plt.plot(P_fa_isac,   P_d_isac,   linewidth=2.5, color='green', linestyle='-',  label='ISAC Signal')
-plt.plot(P_fa_vouras, P_d_vouras, linewidth=2.5, color='red',   linestyle='-.', label='Vouras Signal')
-plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
+plt.loglog(P_fa_chirp,  P_d_chirp,  linewidth=2.5, color='blue',  label='Ideal LFM Chirp')
+plt.loglog(P_fa_isac,   P_d_isac,   linewidth=2.5, color='green', linestyle='-',  label='ISAC Signal')
+plt.loglog(P_fa_vouras, P_d_vouras, linewidth=2.5, color='red',   linestyle='-.', label='Vouras Signal')
+
 plt.title(f'ROC (filtered to [0, B], SNR = {SNR_dB} dB)', fontsize=14)
 plt.xlabel('Probability of False Alarm ($P_{FA}$)', fontsize=12)
 plt.ylabel('Probability of Detection ($P_D$)', fontsize=12)
-plt.xlim([-0.01, 1.0]); plt.ylim([0.0, 1.05])
-plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-plt.legend(fontsize=12, loc='lower right')
-plt.tight_layout()
 
-plt.show()
+# קביעת גבולות הגיוניים לסקאלה לוגריתמית
+min_pfa = 1 / N_trials # ההסתברות המינימלית שאינה אפס בהינתן מספר הניסויים
+plt.xlim([5e-4, 0.1]) # מעניין אותנו P_fa נמוך ועד חצי
+plt.ylim([1e-3, 1.05])   # חובה להתחיל ממספר חיובי, עד טיפה מעל 1 כדי שלא ייחתך
 
-# ============================================================
-# 5.5. ROC after range gating at SNR=-8dB
-# ============================================================
-print(f"\nRunning ROC with Range Gating at SNR = {SNR_dB} dB ({N_trials} trials each)...")
-P_fa_chirp,  P_d_chirp,  _ = calculate_roc_with_range_gate(tx_chirp_f,  SNR_dB, N_trials, true_distance, fs, "Chirp")
-P_fa_isac,   P_d_isac,   _ = calculate_roc_with_range_gate(tx_isac_f,   SNR_dB, N_trials, true_distance, fs, "ISAC")
-P_fa_vouras, P_d_vouras, _ = calculate_roc_with_range_gate(tx_vouras_f, SNR_dB, N_trials, true_distance, fs, "Vouras")
-
-plt.figure(figsize=(10, 8))
-plt.plot(P_fa_chirp,  P_d_chirp,  linewidth=2.5, color='blue',  label='Ideal LFM Chirp')
-plt.plot(P_fa_isac,   P_d_isac,   linewidth=2.5, color='green', linestyle='-',  label='ISAC Signal')
-plt.plot(P_fa_vouras, P_d_vouras, linewidth=2.5, color='red',   linestyle='-.', label='Vouras Signal')
-plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random Guess')
-plt.title(f'ROC (filtered to [0, B], SNR = {SNR_dB} dB)', fontsize=14)
-plt.xlabel('Probability of False Alarm ($P_{FA}$)', fontsize=12)
-plt.ylabel('Probability of Detection ($P_D$)', fontsize=12)
-plt.xlim([-0.01, 1.0]); plt.ylim([0.0, 1.05])
 plt.grid(True, which='both', linestyle='--', linewidth=0.5)
 plt.legend(fontsize=12, loc='lower right')
 plt.tight_layout()
@@ -530,48 +547,24 @@ plt.show()
 # ============================================================
 # 8. Plot 3D Ambiguity Functions
 # ============================================================
-print("\n" + "="*55)
-print("Calculating and Plotting 3D Ambiguity Functions...")
-print("="*55)
-
-MAX_DOPPLER = 50e3  
-
-# --- Ideal LFM Chirp ---
-delays_c, dopplers_c, af_chirp = calculate_ambiguity_function(tx_chirp_f, fs, max_doppler=MAX_DOPPLER)
-plot_ambiguity_function_3d(delays_c, dopplers_c, af_chirp, title="3D Ambiguity Function: Ideal LFM Chirp")
-
-# --- ISAC Signal ---
-delays_i, dopplers_i, af_isac = calculate_ambiguity_function(tx_isac_f, fs, max_doppler=MAX_DOPPLER)
-plot_ambiguity_function_3d(delays_i, dopplers_i, af_isac, title="3D Ambiguity Function: ISAC Signal")
-
-# --- Vouras Signal ---
-delays_v, dopplers_v, af_vouras = calculate_ambiguity_function(tx_vouras_f, fs, max_doppler=MAX_DOPPLER)
-plot_ambiguity_function_3d(delays_v, dopplers_v, af_vouras, title="3D Ambiguity Function: Vouras Signal")
-
-plt.show()
 
 
-
-
-
-
-"""
-פה אני אכתוב את כל משנתי בנוגע ללמה זה בינתיים לא עובד ואיך לתקן
-
-
-1. ROC and Pulse shape do not really correlate:
-ROC כשאנחנו משווים פונקציונליות של אותות חישה באמצעות גרף 
-אנחנו בעצם לא מתייחסים בכלל לצורת האות שלנו, במיוחד לא בגילוי מטרה יחידה
-
-מה שכן משנה זה האנרגיה של האות, ככל שלאות אנרגיה גבוהה יותר, כך הסיכוי לגילוי גבוה יותר
-כל זה בהנחה שאנחנו דוגמים *בדיוק איפה שאמור להיות העצם*, אם נדגום במקום עם הקורלציה המקסימלית זה לא יעבוד
-
-2. Why it makes sense to define it as such?
-תחשוב שאנחנו רוצים לראות את הסיכוי לזהות שני עצמים ולא אחד. זו בעיה קלאסית שהרבה פעמים מסתכלים עליה
-האם גם כעת אנחנו ניקח את שתי הנקודות בעלות הקורלציה המקסימלית? כמובן שלא! אנחנו ניקח במיקומים המדויקים
-
-
-3. I do not trust this code yet
-עוד לא יצא לי לקרוא את הקוד שורה שורה, מציע שנעשה את זה כמו שצריך כי זה קוד צ'אטי מדי
-צריך לכתוב עליו הערות ולסדר את הכל שיהיה מובן וקריא לנו, ושיהיה לנו ברור מה ואיך קורה בכל שלב בדיוק
-"""
+#print("\n" + "="*55)
+#print("Calculating and Plotting 3D Ambiguity Functions...")
+#print("="*55)
+#
+#MAX_DOPPLER = 20e3  
+#
+## --- Ideal LFM Chirp ---
+#delays_c, dopplers_c, af_chirp = calculate_ambiguity_function(tx_chirp_f, fs, max_doppler=MAX_DOPPLER)
+#plot_ambiguity_function_3d(delays_c, dopplers_c, af_chirp, title="3D Ambiguity Function: Ideal LFM Chirp")
+#
+## --- ISAC Signal ---
+#delays_i, dopplers_i, af_isac = calculate_ambiguity_function(tx_isac_f, fs, max_doppler=MAX_DOPPLER)
+#plot_ambiguity_function_3d(delays_i, dopplers_i, af_isac, title="3D Ambiguity Function: ISAC Signal")
+#
+## --- Vouras Signal ---
+#delays_v, dopplers_v, af_vouras = calculate_ambiguity_function(tx_vouras_f, fs, max_doppler=MAX_DOPPLER)
+#plot_ambiguity_function_3d(delays_v, dopplers_v, af_vouras, title="3D Ambiguity Function: Vouras Signal")
+#
+#plt.show()
