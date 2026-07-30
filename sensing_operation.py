@@ -454,7 +454,7 @@ plt.ylabel('Probability of Detection ($P_D$)', fontsize=12)
 
 # קביעת גבולות הגיוניים לסקאלה לוגריתמית
 min_pfa = 1 / N_trials # ההסתברות המינימלית שאינה אפס בהינתן מספר הניסויים
-plt.xlim([5e-4, 0.1]) # מעניין אותנו P_fa נמוך ועד חצי
+plt.xlim([min_pfa, 0.1]) # מעניין אותנו P_fa נמוך ועד חצי
 plt.ylim([1e-3, 1.05])   # חובה להתחיל ממספר חיובי, עד טיפה מעל 1 כדי שלא ייחתך
 
 plt.grid(True, which='both', linestyle='--', linewidth=0.5)

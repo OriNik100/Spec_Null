@@ -1,64 +1,9 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-
-def calculate_mf_pslr_islr_torch(signal, B, Fs, db=False):
-    # Calculate the matched filter (auto-correlation)
-    matched_filter = torch.conj(torch.flip(signal, dims=[0]))
-    conv_len = signal.shape[0] + matched_filter.shape[0] - 1
-    
-    # Perform linear convolution via the frequency domain
-    mf = torch.fft.ifft(torch.fft.fft(signal, n=conv_len) * torch.fft.fft(matched_filter, n=conv_len))
-    
-    mf_abs = torch.abs(mf)
-    mf_db = 20 * torch.log10(mf_abs + 1e-80)
-    
-    # The peak location is known a priori for auto-correlation (N-1)
-    N = signal.shape[0]
-    center_idx = N - 1 
-    
-    # Calculate the boundaries of the main lobe
-    main_lobe_width_seconds = 2 / B
-    margin_samples = int((main_lobe_width_seconds / 2) * Fs)
-    
-    # Ensure no array bounds violation (clipping)
-    start_idx = max(0, center_idx - margin_samples)
-    end_idx = min(len(mf_abs), center_idx + margin_samples + 1)
-    
-    # Split into regions (linear values only, DB calculated later if needed)
-    main_lobe_linear = mf_abs[start_idx:end_idx]
-    left_side_linear = mf_abs[:start_idx]
-    right_side_linear = mf_abs[end_idx:]
-    sidelobes_linear = torch.cat((left_side_linear, right_side_linear))
-    
-    # Calculate energies using sum of squares (standard for discrete signals)
-    main_lobe_energy = torch.sum(main_lobe_linear ** 2)
-    sidelobe_energy = torch.sum(sidelobes_linear ** 2)
-    
-    # Find maximum values
-    max_mainlobe_linear = torch.max(main_lobe_linear)
-    max_sidelobe_linear = torch.max(sidelobes_linear)
-    
-    if db:
-        # Work directly with logarithmic values
-        max_sidelobe_db = torch.max(mf_db[:start_idx].max() if len(left_side_linear) > 0 else torch.tensor(-float('inf')),
-                                    mf_db[end_idx:].max() if len(right_side_linear) > 0 else torch.tensor(-float('inf')))
-        max_mainlobe_db = torch.max(mf_db[start_idx:end_idx])
-        
-        pslr = max_sidelobe_db - max_mainlobe_db
-        islr = 10 * torch.log10(sidelobe_energy / (main_lobe_energy + 1e-80))
-    else:
-        # Linear power ratio calculation
-        # Note: For NN optimization, a differentiable L-p norm (e.g., p=10) 
-        # can replace torch.max here to push down all high sidelobes evenly.
-        pslr = (max_sidelobe_linear / (max_mainlobe_linear + 1e-80)) ** 2
-        islr = sidelobe_energy / (main_lobe_energy + 1e-80)
-        
-    return mf_db, pslr, islr
-
 import numpy as np
 
-def calculate_mf_pslr_islr_numpy(signal, B, Fs, db=False):
+def calculate_mf_pslr_islr_numpy_(signal, B, Fs, db=False):
     # Calculate the matched filter (auto-correlation)
     matched_filter = np.conj(signal[::-1])
     conv_len = len(signal) + len(matched_filter) - 1
@@ -80,6 +25,73 @@ def calculate_mf_pslr_islr_numpy(signal, B, Fs, db=False):
     # Ensure no array bounds violation (clipping)
     start_idx = max(0, center_idx - margin_samples)
     end_idx = min(len(mf_abs), center_idx + margin_samples + 1)
+    
+    # Split into regions (linear values only, DB calculated later if needed)
+    main_lobe_linear = mf_abs[start_idx:end_idx]
+    left_side_linear = mf_abs[:start_idx]
+    right_side_linear = mf_abs[end_idx:]
+    sidelobes_linear = np.concatenate((left_side_linear, right_side_linear))
+    
+    # Calculate energies using sum of squares (standard for discrete signals)
+    main_lobe_energy = np.sum(main_lobe_linear ** 2)
+    sidelobe_energy = np.sum(sidelobes_linear ** 2)
+    
+    # Find maximum values safely
+    max_mainlobe_linear = np.max(main_lobe_linear)
+    max_sidelobe_linear = np.max(sidelobes_linear) if len(sidelobes_linear) > 0 else 0.0
+    
+    if db:
+        # Work directly with logarithmic values
+        max_left_db = np.max(mf_db[:start_idx]) if len(left_side_linear) > 0 else -np.inf
+        max_right_db = np.max(mf_db[end_idx:]) if len(right_side_linear) > 0 else -np.inf
+        max_sidelobe_db = max(max_left_db, max_right_db)
+        
+        max_mainlobe_db = np.max(mf_db[start_idx:end_idx])
+        
+        pslr = max_sidelobe_db - max_mainlobe_db
+        islr = 10 * np.log10(sidelobe_energy / (main_lobe_energy + 1e-80))
+    else:
+        # Linear power ratio calculation
+        pslr = (max_sidelobe_linear / (max_mainlobe_linear + 1e-80)) ** 2
+        islr = sidelobe_energy / (main_lobe_energy + 1e-80)
+        
+    return mf_db, pslr, islr
+
+
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+
+def calculate_mf_pslr_islr_numpy(signal, B, Fs, db=False):
+    # Calculate the matched filter (auto-correlation)
+    matched_filter = np.conj(signal[::-1])
+    conv_len = len(signal) + len(matched_filter) - 1
+    
+    # Perform linear convolution via the frequency domain
+    mf = np.fft.ifft(np.fft.fft(signal, n=conv_len) * np.fft.fft(matched_filter, n=conv_len))
+    
+    mf_abs = np.abs(mf)
+    mf_db = 20 * np.log10(mf_abs + 1e-80)
+    
+    # מציאת מיקום השיא באופן דינמי ובטוח יותר
+    center_idx = np.argmax(mf_abs)
+    
+    # חיפוש דינמי של ה-Nulls (מינימום מקומי ראשון) משמאל ומימין לשיא
+    left_idx = center_idx
+    while left_idx > 0 and mf_abs[left_idx - 1] <= mf_abs[left_idx]:
+        left_idx -= 1
+        
+    right_idx = center_idx
+    while right_idx < len(mf_abs) - 1 and mf_abs[right_idx + 1] <= mf_abs[right_idx]:
+        right_idx += 1
+        
+    # חישוב רוחב תיאורטי מינימלי למקרה של אות ללא אפסים ברורים
+    main_lobe_width_seconds = 2 / B
+    margin_samples = int((main_lobe_width_seconds / 2) * Fs)
+    
+    # לקיחת המקסימום מבין הרוחב הדינמי שמצאנו לבין הרוחב התיאורטי הבסיסי
+    start_idx = min(left_idx, max(0, center_idx - margin_samples))
+    end_idx = max(right_idx + 1, min(len(mf_abs), center_idx + margin_samples + 1))
     
     # Split into regions (linear values only, DB calculated later if needed)
     main_lobe_linear = mf_abs[start_idx:end_idx]
