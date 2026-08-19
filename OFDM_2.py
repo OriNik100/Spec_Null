@@ -30,6 +30,8 @@ def OFDM(data, t=t, num= num_subcarriers, magnitude=1, normalize=False):
         signal *= 1/np.sqrt(num)
     return magnitude * signal
 
+
+
 def OFDM_demodulate (signal, num, T=T, t=t):
     t = np.array(t)
     signal = np.array(signal)
