@@ -16,7 +16,7 @@ Historically, spectral nulling methods relied on constrained optimization proble
 We transcend these limitations by treating the added phase perturbation, $\phi(t)$, as a set of learned parameters. By employing a gradient descent-based algorithm (Adam optimizer), we directly tackle the non-convex problem to find the optimal phase that minimizes a multi-objective Lagrangian loss function:
 
 $$
-\mathcal{L} = \sum_{k\in\mathcal{F}} |X_s(f_k)|^2 + \beta_{norm}\|\phi\|_2^2 + \beta_{smooth}\|\mathbf{D}\phi\|_2^2 + \beta_{PSLR}\gamma_{PSLR}^2 + \beta_{ISLR}\gamma_{ISLR}^2
+\mathcal{L} = \sum_{k\in\mathcal{F}}|X_s(f_k)|^2 + \beta_{norm}\|\phi\|_2^2 + \beta_{smooth}\|\mathbf{D}\phi\|_2^2 + \beta_{PSLR}\gamma_\text{PSLR}^2 + \beta_{ISLR}\gamma_{ISLR}^2
 $$
 
 This framework empowers designers to dynamically control the fundamental trade-off between spectral null depth (to accommodate embedded OFDM data) and resulting radar performance metrics like the Peak Sidelobe Level Ratio (PSLR) and Integrated Sidelobe Ratio (ISLR).
