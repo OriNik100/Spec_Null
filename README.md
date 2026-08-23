@@ -43,4 +43,4 @@ We have successfully developed a complete Python-based simulation framework, rea
 * **Complete ISAC Transmitter:** Engineered the communication subsystem by successfully mapping QPSK-modulated OFDM data precisely into the optimal spectral nulls of the radar chirp.
 * **Receiver Design & AWGN Evaluation:** Architected a custom **Maximum-Likelihood (ML) receiver** and comprehensively evaluated the dual-functionality performance under an AWGN channel across varying Sensing-to-Communication (StC) ratios. Performance was validated using standard metrics:
     * **Sensing:** Probability of Detection (POD) against targets (e.g., $1500\text{m}$ delay simulations).
-    * **Communication:** Bit Error Rate (BER) and Symbol Error Rate (SER).
+    * **Communication:** Symbol Error Rate (SER).
