@@ -10,7 +10,7 @@ At the core of the ISAC architecture lies an inherent conflict: sensing requires
 
 This repository presents a novel, metric-agnostic waveform design framework that resolves this conflict. By carving out designated interference-free spectral "holes" within an optimal, constant-envelope radar waveform (e.g., LFM) and actively embedding high-capacity OFDM symbols into these sub-bands, we fundamentally decouple these conflicting physical requirements.
 
-## Our Approach: Deep Learning Optimization
+## Our Approach: Numerical Optimization
 Historically, spectral nulling methods relied on constrained optimization problems using linear approximations (e.g., Taylor series) of a highly non-linear, non-convex phase problem. This legacy approach treats waveform distortion as an uncontrollable byproduct.
 
 We transcend these limitations by treating the added phase perturbation, $\phi(t)$, as a set of learned parameters. By employing a gradient descent-based algorithm (Adam optimizer), we directly tackle the non-convex problem to find the optimal phase that minimizes a multi-objective Lagrangian loss function:
